@@ -7,7 +7,7 @@ import re
 from rich.console import Console
 
 from groundhog import config
-from groundhog.browser.actions import Ctx, goto_app, perform
+from groundhog.browser.actions import Ctx, goto_app, on_picker, perform, recover_workspace
 from groundhog.browser.session import Session
 from groundhog.browser.snapshot import fingerprint, snapshot
 from groundhog.browser.selectors import dedupe_ranked, embeds_value
@@ -116,6 +116,8 @@ def _execute(page, ctx: Ctx, action: str, inp: dict, trace: list[dict]) -> dict:
     if action == "read_docs":
         return {"ok": True, "text": _read_docs(inp.get("url", ""))}
 
+    if on_picker(page):
+        recover_workspace(page)
     url_before, fp_before = page.url, fingerprint(snapshot(page))
     step = Step(
         id="", action="goto" if action == "goto" else action,

@@ -54,17 +54,33 @@ def _credential(field: str) -> str:
     return config.LOGIN_USER if field == "user" else config.LOGIN_PASS
 
 
-def goto_app(page: Page, url: str) -> None:
-    """Navigate within the app, recovering from the workspace-picker bounce:
-    the app sometimes redirects to /workspaces?forwardUrl=… when the session
-    loses workspace context — pick the configured workspace and retry."""
-    page.goto(url)
-    settle(page)
-    if "/workspaces" in page.url and config.LOGIN_WORKSPACE:
+def on_picker(page: Page) -> bool:
+    """The app sometimes bounces to /workspaces(?forwardUrl=…) when the session
+    loses workspace context — no step or crawl page legitimately starts there."""
+    return "/workspaces" in page.url
+
+
+def recover_workspace(page: Page) -> bool:
+    if not (on_picker(page) and config.LOGIN_WORKSPACE):
+        return False
+    try:
         page.get_by_role("link", name=config.LOGIN_WORKSPACE).first.click(
             timeout=config.STEP_TIMEOUT_MS)
         settle(page)
-        if url not in page.url:
+        return True
+    except Exception:
+        return False
+
+
+def goto_app(page: Page, url: str) -> None:
+    """Navigate within the app, recovering from the workspace-picker bounce."""
+    page.goto(url)
+    settle(page)
+    for _ in range(2):
+        if not on_picker(page):
+            return
+        recover_workspace(page)
+        if url.split("?")[0] not in page.url:
             page.goto(url)
             settle(page)
 
@@ -124,6 +140,9 @@ def run_step(page: Page, step: Step, ctx: Ctx) -> StepOutcome:
             return StepOutcome(ok=True, drift=drift)
         except Exception as e:
             return StepOutcome(ok=False, drift=drift, error=str(e))
+
+    if on_picker(page):
+        recover_workspace(page)
 
     before_url, before_fp = page.url, fingerprint(snapshot(page))
     last_error = None

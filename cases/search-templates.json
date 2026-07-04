@@ -1,0 +1,61 @@
+{
+  "name": "search-templates",
+  "intent": "search the templates list for shorty and verify a matching template is shown",
+  "start_path": "/:ws/templates",
+  "steps": [
+    {
+      "id": "s1",
+      "action": "click",
+      "selector": "[placeholder=\"Search Templates\"]",
+      "fallback_selectors": [],
+      "value": null,
+      "field": null,
+      "description": "Click on the Search Templates input field",
+      "expects": null,
+      "page_fingerprint": "sha256:fe42ebb67d660ec9",
+      "healed_count": 0
+    },
+    {
+      "id": "s2",
+      "action": "fill",
+      "selector": "[placeholder=\"Search Templates\"]",
+      "fallback_selectors": [],
+      "value": "shorty",
+      "field": null,
+      "description": "Type 'shorty' into the search field to filter templates",
+      "expects": null,
+      "page_fingerprint": "sha256:fe42ebb67d660ec9",
+      "healed_count": 0
+    },
+    {
+      "id": "s3",
+      "action": "press",
+      "selector": "[placeholder=\"Search Templates\"]",
+      "fallback_selectors": [],
+      "value": "Enter",
+      "field": null,
+      "description": "Press Enter to trigger the search filter",
+      "expects": {
+        "kind": "url_contains",
+        "value": "search=shorty"
+      },
+      "page_fingerprint": "sha256:fe42ebb67d660ec9",
+      "healed_count": 0
+    }
+  ],
+  "assertions": [
+    {
+      "assertion": "url_contains:search=shorty",
+      "mode": "deterministic"
+    },
+    {
+      "assertion": "a template matching 'shorty' is displayed in the filtered results",
+      "mode": "llm"
+    }
+  ],
+  "meta": {
+    "created_at": "2026-07-04T03:01:01.788055+00:00",
+    "runs": 2,
+    "heals": []
+  }
+}

@@ -122,6 +122,12 @@ def run_case(case: Case, session: Session, vars: dict[str, str] | None = None,
         _persist_heals(case, healed_steps)
     case.meta.runs += 1
     save(case)
+    try:
+        from groundhog.graph.ingest import ingest_run
+
+        ingest_run(case, result.passed)
+    except Exception:
+        pass  # graph is an accelerator, never a prerequisite
     return result
 
 
@@ -135,6 +141,13 @@ def _try_heal(page, step, ctx: Ctx, error: str | None):
         return None  # healer unavailable (no API key, network) — fail the step honestly
     if not fix:
         return None
+    try:  # the graph learns the healed element too
+        from groundhog.graph import store as graph
+
+        graph.upsert_element(graph.page_key(page.url), fix.selector,
+                             kind="nav", description=step.description)
+    except Exception:
+        pass
     return Heal(step=step.id, old=step.selector or "", new=fix.selector,
                 at=datetime.now(timezone.utc).isoformat(), reason=fix.reasoning)
 
