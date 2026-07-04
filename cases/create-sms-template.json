@@ -1,0 +1,79 @@
+{
+  "name": "create-sms-template",
+  "intent": "create an SMS template named {{name}} and verify it appears in the templates list",
+  "start_path": "/:ws/templates",
+  "steps": [
+    {
+      "id": "s1",
+      "action": "click",
+      "selector": "button:has-text(\"Create\")",
+      "fallback_selectors": [],
+      "value": null,
+      "field": null,
+      "description": "Click the Create button to start creating a new template",
+      "expects": {
+        "kind": "selector_visible",
+        "value": "input[placeholder=\"Enter Name\"]"
+      },
+      "page_fingerprint": "sha256:bd426445035a8316",
+      "healed_count": 0
+    },
+    {
+      "id": "s2",
+      "action": "fill",
+      "selector": "input[placeholder=\"Enter Name\"]",
+      "fallback_selectors": [],
+      "value": "{{name}}",
+      "field": null,
+      "description": "Enter the template name",
+      "expects": null,
+      "page_fingerprint": "sha256:5389e340b6193571",
+      "healed_count": 0
+    },
+    {
+      "id": "s3",
+      "action": "click",
+      "selector": "button:has-text(\"Submit\")",
+      "fallback_selectors": [],
+      "value": null,
+      "field": null,
+      "description": "Click the Submit button to create the SMS template",
+      "expects": {
+        "kind": "url_contains",
+        "value": "/v1#sms"
+      },
+      "page_fingerprint": "sha256:b8e8acfe0d61db0c",
+      "healed_count": 0
+    },
+    {
+      "id": "s4",
+      "action": "goto",
+      "selector": null,
+      "fallback_selectors": [],
+      "value": "/:ws/templates?group=All&perPageLimit=30&env=dev&activeLayout=Grid",
+      "field": null,
+      "description": "Navigate back to the templates list page",
+      "expects": {
+        "kind": "url_contains",
+        "value": "/templates"
+      },
+      "page_fingerprint": null,
+      "healed_count": 0
+    }
+  ],
+  "assertions": [
+    {
+      "assertion": "text_visible:{{name}}",
+      "mode": "deterministic"
+    },
+    {
+      "assertion": "The newly created SMS template '{{name}}' appears in the templates list",
+      "mode": "llm"
+    }
+  ],
+  "meta": {
+    "created_at": "2026-07-04T02:47:55.859827+00:00",
+    "runs": 1,
+    "heals": []
+  }
+}
