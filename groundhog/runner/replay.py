@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
 from groundhog import config
-from groundhog.browser.actions import Ctx, check_expects, run_step, settle
+from groundhog.browser.actions import Ctx, check_expects, goto_app, run_step, settle
 from groundhog.browser.session import Session
 from groundhog.cases.schema import Assertion, Case, Expect, Heal
 from groundhog.cases.store import render, save
@@ -77,8 +77,7 @@ def run_case(case: Case, session: Session, vars: dict[str, str] | None = None,
     result = RunResult(case=case.name, started_at=datetime.now(timezone.utc).isoformat())
     clock = time.monotonic()
 
-    page.goto(f"{config.BASE_URL}{case.start_path.replace('/:ws', '/' + ctx.ws if ctx.ws else '')}")
-    settle(page)
+    goto_app(page, f"{config.BASE_URL}{case.start_path.replace('/:ws', '/' + ctx.ws if ctx.ws else '')}")
 
     healed_steps: list[tuple[str, Heal]] = []
     aborted = False
@@ -130,9 +129,10 @@ def _try_heal(page, step, ctx: Ctx, error: str | None):
     """One FAST call: replacement selector or refusal. Returns a Heal or None."""
     try:
         from groundhog.agent.healer import heal_step
-    except ImportError:
-        return None
-    fix = heal_step(page, step, ctx, error)
+
+        fix = heal_step(page, step, ctx, error)
+    except Exception:
+        return None  # healer unavailable (no API key, network) — fail the step honestly
     if not fix:
         return None
     return Heal(step=step.id, old=step.selector or "", new=fix.selector,

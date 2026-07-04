@@ -54,13 +54,27 @@ def _credential(field: str) -> str:
     return config.LOGIN_USER if field == "user" else config.LOGIN_PASS
 
 
+def goto_app(page: Page, url: str) -> None:
+    """Navigate within the app, recovering from the workspace-picker bounce:
+    the app sometimes redirects to /workspaces?forwardUrl=… when the session
+    loses workspace context — pick the configured workspace and retry."""
+    page.goto(url)
+    settle(page)
+    if "/workspaces" in page.url and config.LOGIN_WORKSPACE:
+        page.get_by_role("link", name=config.LOGIN_WORKSPACE).first.click(
+            timeout=config.STEP_TIMEOUT_MS)
+        settle(page)
+        if url not in page.url:
+            page.goto(url)
+            settle(page)
+
+
 def perform(page: Page, step: Step, ctx: Ctx, selector: str | None = None) -> None:
     """One action against the live page. Throws on failure so callers decide
     whether to walk fallbacks, heal, or fail."""
     timeout = config.STEP_TIMEOUT_MS
     if step.action == "goto":
-        page.goto(resolve_path(step.value or step.selector or "/", ctx))
-        settle(page)
+        goto_app(page, resolve_path(step.value or step.selector or "/", ctx))
         return
     loc = page.locator(selector or step.selector).first
     value = render(step.value or "", ctx.vars)

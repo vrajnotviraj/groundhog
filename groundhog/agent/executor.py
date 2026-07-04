@@ -7,7 +7,7 @@ import re
 from rich.console import Console
 
 from groundhog import config
-from groundhog.browser.actions import Ctx, perform
+from groundhog.browser.actions import Ctx, goto_app, perform
 from groundhog.browser.session import Session
 from groundhog.browser.snapshot import fingerprint, snapshot
 from groundhog.browser.selectors import dedupe_ranked, embeds_value
@@ -165,7 +165,7 @@ def author_case(intent: str, name: str | None = None, headless: bool = True) -> 
         session.ensure_logged_in()
         ctx = Ctx(ws=session.ws)
         page = session.page
-        page.goto(f"{config.BASE_URL}{draft.start_path.replace('/:ws', '/' + ctx.ws if ctx.ws else '')}")
+        goto_app(page, f"{config.BASE_URL}{draft.start_path.replace('/:ws', '/' + ctx.ws if ctx.ws else '')}")
         trace, done = run_executor(page, ctx, intent, draft.steps, draft.notes)
         if not trace:
             raise RuntimeError("executor recorded no successful actions — nothing to save")
