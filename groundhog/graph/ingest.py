@@ -1,6 +1,7 @@
 """Trace → graph. Every agent run teaches the graph; everything goes through
 store.py upserts."""
 
+from groundhog.browser.selectors import is_weak
 from groundhog.cases.schema import Case
 from groundhog.graph import store
 
@@ -39,11 +40,16 @@ def ingest_crawl(url: str, title: str, elements: list, transitions: list[tuple[s
     elements: ObservedElement-likes; transitions: (selector, action, to_url)."""
     key = store.page_key(url)
     store.upsert_page(key, title=title)
+    # The observe model sometimes invents pseudo-tag CSS — a weak selector in
+    # the graph poisons every plan that reuses it, so gate the single write path.
     for e in elements:
+        if is_weak(e.selector):
+            continue
         store.upsert_element(key, e.selector, role=e.role, name=e.name,
                              kind=e.kind, description=e.description)
     for selector, action, to_url in transitions:
-        store.upsert_transition(key, selector, action, store.page_key(to_url))
+        if not is_weak(selector):
+            store.upsert_transition(key, selector, action, store.page_key(to_url))
 
 
 def _kind(t: dict) -> str:

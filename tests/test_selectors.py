@@ -8,6 +8,12 @@ def test_weak_selectors_rejected():
     assert is_weak(None)
     assert not is_weak('role=button[name="Create"]')
     assert not is_weak("#save")
+    # Structural CSS with no anchor, and aria-role names used as CSS tags.
+    assert is_weak("dialog combobox:first-of-type")
+    assert is_weak('combobox[name*="Template"]')
+    assert is_weak('textbox[placeholder="Enter Name"]')
+    assert not is_weak('role=combobox[name="Type"]')
+    assert not is_weak('input[type="checkbox"]')
 
 
 def test_rank_prefers_durable_shapes():
@@ -27,6 +33,8 @@ def test_embeds_value_guards_overfitting():
     assert embeds_value('text="gh-test"', "gh-test")
     assert not embeds_value('role=button[name="Save"]', "gh-test")
     assert not embeds_value('text="ab"', "ab")  # too short to be meaningful
+    # {{var}} placeholders render per run — not overfitting.
+    assert not embeds_value('text="{{name}}"', "{{name}}")
 
 
 def test_dedupe_ranked_orders_and_filters():

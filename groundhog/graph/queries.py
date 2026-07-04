@@ -15,9 +15,16 @@ def slice_for_intent(intent: str, max_pages: int = 5, max_elements: int = 12) ->
         return ""
     rows = store.run("""
         MATCH (p:Page)
-        WHERE any(w IN $words WHERE p.key CONTAINS w OR toLower(coalesce(p.title,'')) CONTAINS w
-                  OR p.section CONTAINS w)
-        WITH p ORDER BY size(p.key) ASC, p.last_seen DESC LIMIT $max_pages
+        WITH p, size([w IN $words WHERE p.key CONTAINS w
+                      OR toLower(coalesce(p.title,'')) CONTAINS w
+                      OR coalesce(p.section,'') CONTAINS w]) AS hits
+        WHERE hits > 0
+        // One page per feature section — the shortest key is the list/entry
+        // page, which holds the create/nav elements a plan needs. Detail pages
+        // would otherwise crowd out other sections on multi-entity intents.
+        WITH p, hits ORDER BY size(p.key) ASC, p.last_seen DESC
+        WITH p.section AS sec, max(hits) AS hits, collect(p)[0] AS p
+        ORDER BY hits DESC, size(p.key) ASC LIMIT $max_pages
         OPTIONAL MATCH (p)-[:HAS]->(e:Element)
         OPTIONAL MATCH (e)-[l:LEADS_TO]->(t:Page)
         RETURN p.key AS page, p.title AS title,

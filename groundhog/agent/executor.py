@@ -5,12 +5,13 @@ orchestration (planner → executor → optimizer → save)."""
 import re
 
 from rich.console import Console
+from rich.markup import escape
 
 from groundhog import config
 from groundhog.browser.actions import Ctx, goto_app, on_picker, perform, recover_workspace
 from groundhog.browser.session import Session
 from groundhog.browser.snapshot import fingerprint, snapshot
-from groundhog.browser.selectors import dedupe_ranked, embeds_value
+from groundhog.browser.selectors import dedupe_ranked, embeds_value, is_weak
 from groundhog.cases.schema import Case, Step
 from groundhog.cases.store import save
 from groundhog.llm import client
@@ -68,11 +69,50 @@ def _read_docs(url: str) -> str:
     return re.sub(r"\s+", " ", text)[:4000]
 
 
+_STATE_MARK = "Current URL: "
+_ELIDED = "[stale page state elided — the latest snapshot is the ground truth]"
+
+
 def _page_state(page) -> str:
-    return f"Current URL: {page.url}\n\nAccessibility snapshot:\n{snapshot(page)}"
+    return f"{_STATE_MARK}{page.url}\n\nAccessibility snapshot:\n{snapshot(page)}"
 
 
-def run_executor(page, ctx: Ctx, intent: str, plan_steps: list[str], notes: str = "") -> tuple[list[dict], dict | None]:
+def _elide_stale_states(messages: list[dict], keep: int = 2) -> None:
+    """Bound the loop's context on long flows: a page state is huge and stale one
+    action later. Keep the newest `keep`, collapse the rest. The assistant's own
+    tool calls stay — they are the compact, durable record of what is done."""
+    holders = []
+    for m in messages:
+        if isinstance(m["content"], str) and _STATE_MARK in m["content"]:
+            holders.append(m)
+        elif isinstance(m["content"], list):
+            holders += [b for b in m["content"]
+                        if isinstance(b, dict) and b.get("type") == "tool_result"
+                        and isinstance(b.get("content"), str) and _STATE_MARK in b["content"]]
+    for h in holders[:-keep]:
+        h["content"] = h["content"].split(_STATE_MARK)[0] + _ELIDED
+
+
+def _templatize(obj, vars: dict[str, str] | None):
+    """Reverse-substitute concrete var values back into {{var}} placeholders, so
+    the saved case is parameterized even though the agent typed real values
+    (validated name fields reject literal braces)."""
+    if not vars:
+        return obj
+    if isinstance(obj, str):
+        for k, v in vars.items():
+            if len(v) >= 3:
+                obj = obj.replace(v, "{{" + k + "}}")
+        return obj
+    if isinstance(obj, list):
+        return [_templatize(x, vars) for x in obj]
+    if isinstance(obj, dict):
+        return {k: _templatize(x, vars) for k, x in obj.items()}
+    return obj
+
+
+def run_executor(page, ctx: Ctx, intent: str, plan_steps: list[str], notes: str = "",
+                 max_actions: int = 0) -> tuple[list[dict], dict | None]:
     """Drive the loop; returns (trace, done_payload). done_payload is None when
     the action budget ran out before the agent finished."""
     system = client.prompt("executor", context="")
@@ -84,7 +124,9 @@ def run_executor(page, ctx: Ctx, intent: str, plan_steps: list[str], notes: str 
                  + f"\n{_page_state(page)}"}]
 
     nudges = 0
-    for _ in range(config.EXECUTOR_MAX_ACTIONS):
+    failed: dict[tuple[str, str], int] = {}
+    for _ in range(max_actions or config.EXECUTOR_MAX_ACTIONS):
+        _elide_stale_states(messages)
         resp = client.message(messages, system=system, tools=TOOLS)
         tool_uses = [b for b in resp.content if b.type == "tool_use"]
         if not tool_uses:
@@ -103,7 +145,7 @@ def run_executor(page, ctx: Ctx, intent: str, plan_steps: list[str], notes: str 
                 done_payload = dict(tu.input)
                 results.append({"type": "tool_result", "tool_use_id": tu.id, "content": "recorded"})
                 continue
-            result = _execute(page, ctx, tu.name, dict(tu.input), trace)
+            result = _execute(page, ctx, tu.name, dict(tu.input), trace, failed)
             results.append({"type": "tool_result", "tool_use_id": tu.id,
                             "content": result["text"], "is_error": not result["ok"]})
         messages.append({"role": "user", "content": results})
@@ -112,9 +154,22 @@ def run_executor(page, ctx: Ctx, intent: str, plan_steps: list[str], notes: str 
     return trace, None
 
 
-def _execute(page, ctx: Ctx, action: str, inp: dict, trace: list[dict]) -> dict:
+def _execute(page, ctx: Ctx, action: str, inp: dict, trace: list[dict],
+             failed: dict[tuple[str, str], int]) -> dict:
     if action == "read_docs":
         return {"ok": True, "text": _read_docs(inp.get("url", ""))}
+
+    # Deterministic gates before touching the browser — a bad selector otherwise
+    # costs a full step timeout per attempt.
+    key = (action, inp.get("selector") or "")
+    if action != "goto" and is_weak(inp.get("selector")):
+        return {"ok": False, "text": "error: weak selector — purely structural CSS (bare tags, "
+                                     "descendant chains, :nth pseudos, snapshot role names like "
+                                     "'combobox' used as tags) cannot be durable. Use "
+                                     'role=…[name="…"], [aria-label="…"], [placeholder="…"], #id, or text="…".'}
+    if failed.get(key, 0) >= 2:
+        return {"ok": False, "text": "error: this selector already failed twice — "
+                                     "use a different selector shape or navigate by URL"}
 
     if on_picker(page):
         recover_workspace(page)
@@ -129,7 +184,9 @@ def _execute(page, ctx: Ctx, action: str, inp: dict, trace: list[dict]) -> dict:
     try:
         perform(page, step, ctx)
     except Exception as e:
-        console.print(f"  [red]✗[/] {action} {step.selector or step.value} — {str(e).splitlines()[0]}")
+        failed[key] = failed.get(key, 0) + 1
+        # escape: selectors contain […] which Rich would swallow as markup tags.
+        console.print(f"  [red]✗[/] {escape(f'{action} {step.selector or step.value} — {str(e).splitlines()[0]}')}")
         return {"ok": False, "text": f"error: {str(e).splitlines()[0]}\n\n{_page_state(page)}"}
 
     fallbacks = dedupe_ranked([s for s in inp.get("fallback_selectors", [])
@@ -141,7 +198,7 @@ def _execute(page, ctx: Ctx, action: str, inp: dict, trace: list[dict]) -> dict:
         "url_before": url_before, "url_after": page.url,
         "fingerprint_before": fp_before,
     })
-    console.print(f"  [green]·[/] {step.description}")
+    console.print(f"  [green]·[/] {escape(step.description)}")
     return {"ok": True, "text": f"ok\n\n{_page_state(page)}"}
 
 
@@ -150,14 +207,19 @@ def _derive_name(intent: str) -> str:
     return "-".join(words[:5]) or "case"
 
 
-def author_case(intent: str, name: str | None = None, headless: bool = True) -> Case:
+def author_case(intent: str, name: str | None = None, headless: bool = True,
+                vars: dict[str, str] | None = None) -> Case:
     from datetime import datetime, timezone
 
     from groundhog.agent.planner import plan as make_plan
     from groundhog.agent.optimizer import optimize
+    from groundhog.cases.store import render
 
     name = name or _derive_name(intent)
-    draft, used_graph = make_plan(intent)
+    # The agent works with concrete values (validated fields reject literal
+    # braces); the saved case is re-parameterized from `vars` afterwards.
+    live_intent = render(intent, vars)
+    draft, used_graph = make_plan(live_intent)
     console.print(f"[cyan]plan[/] start at {draft.start_path}"
                   f" ({'graph-informed' if used_graph else 'graphless'}):")
     for s in draft.steps:
@@ -168,12 +230,16 @@ def author_case(intent: str, name: str | None = None, headless: bool = True) -> 
         ctx = Ctx(ws=session.ws)
         page = session.page
         goto_app(page, f"{config.BASE_URL}{draft.start_path.replace('/:ws', '/' + ctx.ws if ctx.ws else '')}")
-        trace, done = run_executor(page, ctx, intent, draft.steps, draft.notes)
+        # Long flows: scale the runaway guard with plan size — ~5 live actions per
+        # sub-goal absorbs retries and verification without letting a lost agent spin.
+        budget = max(config.EXECUTOR_MAX_ACTIONS, 5 * len(draft.steps))
+        trace, done = run_executor(page, ctx, live_intent, draft.steps, draft.notes, max_actions=budget)
         if not trace:
             raise RuntimeError("executor recorded no successful actions — nothing to save")
         if done is None:
-            raise RuntimeError(f"executor hit the {config.EXECUTOR_MAX_ACTIONS}-action budget before finishing")
+            raise RuntimeError(f"executor hit the {budget}-action budget before finishing")
 
+    trace, done = _templatize(trace, vars), _templatize(done, vars)
     case = optimize(name, intent, trace, done)
     case.meta.created_at = datetime.now(timezone.utc).isoformat()
     save(case)

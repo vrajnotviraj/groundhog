@@ -7,7 +7,15 @@ silently act on the wrong one — those are rejected outright.
 
 import re
 
-BARE_TAG = re.compile(r"^[a-z][a-z0-9]*$")
+# A durable selector needs an anchor: an attribute ([…]), an id (#), an engine
+# (role=/text=), or quoted text. Purely structural CSS — bare tags, descendant
+# chains, :nth pseudos — has none, and matches nothing or the wrong thing.
+ANCHOR = re.compile(r"[\[#=\"']")
+
+# ARIA role names masquerading as CSS tags (combobox[name*=…], textbox[…]):
+# they parse as selectors for elements that don't exist and never match.
+ROLE_TAG = re.compile(r"^(combobox|textbox|checkbox|radio|listbox|option|dialog"
+                      r"|listitem|menuitem|switch|slider|tab|treeitem)\b")
 
 # One locator engine per selector, ranked by durability.
 RANK = [
@@ -22,7 +30,7 @@ RANK = [
 
 def is_weak(selector: str | None) -> bool:
     s = (selector or "").strip()
-    return not s or bool(BARE_TAG.match(s))
+    return not s or not ANCHOR.search(s) or bool(ROLE_TAG.match(s))
 
 
 def rank(selector: str) -> int:
@@ -42,8 +50,10 @@ def clean_label(text: str | None) -> str:
 
 def embeds_value(selector: str, value: str | None) -> bool:
     """Overfitting guard: a selector must never embed the step's data value,
-    or the case breaks the moment the test data changes."""
-    return bool(value) and len(value) >= 3 and value.lower() in selector.lower()
+    or the case breaks the moment the test data changes. A {{var}} placeholder
+    is not data — it renders per run — so it passes."""
+    return (bool(value) and "{{" not in value
+            and len(value) >= 3 and value.lower() in selector.lower())
 
 
 def dedupe_ranked(selectors: list[str]) -> list[str]:

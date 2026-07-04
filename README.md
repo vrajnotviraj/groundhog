@@ -41,7 +41,7 @@ adjusting selectors to your login form:
 
 ```sh
 uv run groundhog crawl --scope templates            # app → knowledge graph
-uv run groundhog new "create an SMS template named {{name}} and verify it appears in the list"
+uv run groundhog new "create an SMS template named {{name}} and verify it appears in the list" --var name=gh-seed
 uv run groundhog run create-an-sms-template --var name=gh-1   # static replay, zero LLM on steps
 uv run groundhog run create-an-sms-template --var name=gh-2   # again — still static
 # break a selector in cases/*.json, run again → the step heals and the JSON is rewritten
@@ -96,4 +96,13 @@ runs/                    run reports
 
 Safety: the crawler never executes `mutation`/`destructive` elements — those
 edges enter the graph only from real test runs. Template vars (`{{name}}`)
-substitute into values and assertions at run time, never into selectors.
+substitute into values, assertions, and selectors at run time — a selector may
+target an entity created earlier in the same test by its `{{var}}` name, but
+never a hard-coded data literal.
+
+Long flows (create a routing, a template, then an event that wires them
+together) author in one pass: stale page snapshots are elided from the agent's
+context as it works, and the action budget scales with the plan — so a
+40-action flow stays as crisp as a 5-action one. Authoring types the concrete
+`--var` values (validated name fields reject literal braces); the saved case is
+re-parameterized mechanically before it is written.

@@ -27,8 +27,10 @@ class OptimizedCase(BaseModel):
 
 def optimize(name: str, intent: str, trace: list[dict], suggested: dict) -> Case:
     """trace: executed action records; suggested: the executor's done() payload."""
+    # Fingerprints are attached mechanically below — hide them from the model.
+    lean = [{k: v for k, v in t.items() if k != "fingerprint_before"} for t in trace]
     context = (f"Intent: {intent}\n\n"
-               f"Executed trace:\n{json.dumps(trace, indent=2)}\n\n"
+               f"Executed trace:\n{json.dumps(lean, indent=2)}\n\n"
                f"Agent's suggested start_path: {suggested.get('start_path', '')}\n"
                f"Agent's suggested assertions: {json.dumps(suggested.get('assertions', []))}")
     result = client.parse(
@@ -36,7 +38,7 @@ def optimize(name: str, intent: str, trace: list[dict], suggested: dict) -> Case
         output_model=OptimizedCase,
         system=client.prompt("optimizer", context=context),
         model=client.SMART,
-        max_tokens=8192,
+        max_tokens=min(32768, 8192 + 200 * len(trace)),  # output scales with long flows
     )
 
     # Attach authoring-time fingerprints from the trace — never LLM-invented.

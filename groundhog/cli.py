@@ -47,11 +47,13 @@ def run(name: str, var: list[str] = typer.Option([], help="template var, e.g. --
 
 @app.command()
 def new(intent: str, name: str = typer.Option(None, help="case name (kebab-case); derived from intent if omitted"),
+        var: list[str] = typer.Option([], help="concrete value for a {{var}} in the intent, e.g. --var name=gh-1; "
+                                               "the saved case is re-parameterized automatically"),
         headed: bool = typer.Option(False, help="show the browser")):
     """Author a new case from a natural-language intent (agentic, one-time cost)."""
     from groundhog.agent.executor import author_case
 
-    case = author_case(intent, name=name, headless=not headed)
+    case = author_case(intent, name=name, headless=not headed, vars=_parse_vars(var))
     console.print(f"[green]saved[/] cases/{case.name}.json — {len(case.steps)} steps, {len(case.assertions)} assertions")
 
 

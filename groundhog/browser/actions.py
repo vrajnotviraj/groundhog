@@ -44,6 +44,7 @@ def settle(page: Page, timeout_ms: int = None) -> None:
 
 
 def resolve_path(path: str, ctx: Ctx) -> str:
+    path = render(path, ctx.vars)  # paths address entities the test created: /templates/{{name}}/v1
     if path.startswith("http"):
         return path
     path = path.replace("/:ws", f"/{ctx.ws}" if ctx.ws else "")
@@ -73,13 +74,16 @@ def recover_workspace(page: Page) -> bool:
 
 
 def goto_app(page: Page, url: str) -> None:
-    """Navigate within the app, recovering from the workspace-picker bounce."""
+    """Navigate within the app, recovering from the workspace-picker bounce.
+    The bounce is a client-side boot race that can re-fire on the very page a
+    recovery lands on, so give it several rounds before giving up."""
     page.goto(url)
     settle(page)
-    for _ in range(2):
+    for _ in range(4):
         if not on_picker(page):
             return
         recover_workspace(page)
+        page.wait_for_timeout(1500)  # the picked workspace forwards asynchronously
         if url.split("?")[0] not in page.url:
             page.goto(url)
             settle(page)
@@ -92,7 +96,9 @@ def perform(page: Page, step: Step, ctx: Ctx, selector: str | None = None) -> No
     if step.action == "goto":
         goto_app(page, resolve_path(step.value or step.selector or "/", ctx))
         return
-    loc = page.locator(selector or step.selector).first
+    # Selectors render {{var}} too, so a step can target an entity created
+    # earlier in the same test by its per-run name. Literals never substitute.
+    loc = page.locator(render(selector or step.selector or "", ctx.vars)).first
     value = render(step.value or "", ctx.vars)
     if step.action == "click":
         loc.click(timeout=timeout)
@@ -135,11 +141,19 @@ def run_step(page: Page, step: Step, ctx: Ctx) -> StepOutcome:
         drift = fingerprint(snapshot(page)) != step.page_fingerprint
 
     if step.action == "goto":
-        try:
-            perform(page, step, ctx)
-            return StepOutcome(ok=True, drift=drift)
-        except Exception as e:
-            return StepOutcome(ok=False, drift=drift, error=str(e))
+        # A goto can "succeed" yet land elsewhere — the app redirects entity
+        # pages that race their own creation back to a list. The expects is the
+        # honest signal, and one settle-and-retry beats failing on the race.
+        for attempt in range(2):
+            try:
+                perform(page, step, ctx)
+            except Exception as e:
+                return StepOutcome(ok=False, drift=drift, error=str(e))
+            if not step.expects or check_expects(page, step.expects, ctx):
+                return StepOutcome(ok=True, drift=drift)
+            page.wait_for_timeout(1500)
+        return StepOutcome(ok=False, drift=drift,
+                           error=f"expects failed: {step.expects.kind}={step.expects.value!r}")
 
     if on_picker(page):
         recover_workspace(page)

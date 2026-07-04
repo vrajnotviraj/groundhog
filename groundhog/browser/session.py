@@ -63,6 +63,14 @@ class Session:
             self.page.get_by_role("link", name=config.LOGIN_WORKSPACE).first.click()
             settle(self.page)
 
+    def _dismiss_consent(self) -> None:
+        """The cookie banner overlays page content and blocks clicks; consent is
+        environment noise, not test behavior — clear it once per session."""
+        try:
+            self.page.get_by_role("button", name="Accept All").click(timeout=2000)
+        except Exception:
+            pass
+
     def ensure_logged_in(self) -> None:
         """Reach an authenticated page: cached session → replayed flow → error."""
         self.page.goto(config.BASE_URL)
@@ -70,6 +78,7 @@ class Session:
         if self._authenticated():
             self._select_workspace()
             self._capture()
+            self._dismiss_consent()
             return
 
         if not FLOW.exists():
@@ -92,3 +101,4 @@ class Session:
             raise RuntimeError("cached login flow did not reach an authenticated page")
         self._select_workspace()
         self._capture()
+        self._dismiss_consent()
