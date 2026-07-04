@@ -1,32 +1,47 @@
-# groundhog
+<p align="center">
+  <img src="assets/groundhog.svg" width="160" alt="groundhog mascot">
+</p>
 
-AI-authored, deterministically-replayed web tests.
+<h1 align="center">groundhog</h1>
 
-An agent turns a natural-language test intent into a **JSON test case** once
-(expensive, smart). Every later run is a **static Playwright replay** (fast,
-zero tokens). The agent wakes up **only when a step fails**, heals it, and
-persists the fix back into the case JSON. A Neo4j knowledge graph of the app —
-built by crawling and enriched by every run — gives the agent minimal, targeted
-context, so agent invocations stay crisp and cheap.
+<p align="center"><b>Describe a test in English once. Replay it forever, for free.</b></p>
 
-The system gets cheaper and more deterministic with use: every agent run
-updates the graph; every healed step updates the case; every run after the
-first costs nothing until the UI drifts.
+Groundhog is end-to-end testing for SaaS apps. That's it.
 
-## Setup (≈5 minutes)
+Today you have two bad options for testing a web app. Write Playwright scripts
+by hand — slow to write, and they break every time the UI changes. Or let an AI
+agent drive the browser on every run — resilient, but slow and you pay tokens
+for every single test, every single time.
+
+Groundhog does the smart part once. An AI agent turns your plain-English intent
+into a JSON test case. Every run after that is a static Playwright replay: fast,
+deterministic, zero AI calls. When the UI drifts and a step breaks, the agent
+wakes up, fixes that one step, verifies the fix, and writes it back into the
+JSON. The next run is fully static again.
+
+Like the movie: it wakes up, sees the same day, and gets a little better at it.
+
+## What you get
+
+- **Write tests in English.** `groundhog new "create an SMS template named {{name}} and verify it appears in the list"` — the agent drives your real app, then saves a replayable case.
+- **Runs cost nothing.** A green run makes zero AI calls. The report says so explicitly: "Zero LLM calls".
+- **Tests fix themselves.** A broken selector triggers one small AI call that heals it — and refuses when healing would be dangerous (a Delete step never heals to Cancel).
+- **Your app gets mapped.** A crawler builds a knowledge graph of your app in Neo4j. Every run enriches it. `groundhog suggest` tells you what you haven't tested yet.
+- **Long flows work.** "Create a route, then a template, then an event that wires them together" authors in one pass and replays statically.
+
+## Quick start (~5 minutes)
+
+You need [uv](https://docs.astral.sh/uv/), Docker (optional), and an Anthropic API key.
 
 ```sh
 git clone <this repo> && cd groundhog
 uv sync && uv run playwright install chromium
-docker compose up -d          # Neo4j (optional — everything degrades gracefully without it)
+docker compose up -d          # Neo4j — optional, everything degrades gracefully without it
 cp .env.example .env          # fill in BASE_URL, LOGIN_USER/PASS/WORKSPACE, ANTHROPIC_API_KEY
 ```
 
-Login is two cached layers under `.auth/` (gitignored): `state.json` (session
-cookies) and `login.json` (the login flow as replayable steps — `fill_secret`
-steps store only the field *name*; credentials stay in `.env` and never reach
-the LLM or disk). Seed `login.json` once by copying the shape below and
-adjusting selectors to your login form:
+Then teach it your login form once. Copy this into `.auth/login.json` and adjust
+the selectors:
 
 ```json
 {"start_path": "/", "steps": [
@@ -37,46 +52,60 @@ adjusting selectors to your login form:
 ]}
 ```
 
-## Demo (≈10 minutes)
+Credentials stay in `.env`. They never reach the LLM or disk — `fill_secret`
+steps store only the field name. Session cookies are cached under `.auth/`
+(gitignored) so login replays only when the session expires.
+
+## Use it
 
 ```sh
-uv run groundhog crawl --scope templates            # app → knowledge graph
+uv run groundhog crawl --scope templates      # map your app into the knowledge graph
 uv run groundhog new "create an SMS template named {{name}} and verify it appears in the list" --var name=gh-seed
-uv run groundhog run create-an-sms-template --var name=gh-1   # static replay, zero LLM on steps
+uv run groundhog run create-an-sms-template --var name=gh-1   # static replay, zero AI
 uv run groundhog run create-an-sms-template --var name=gh-2   # again — still static
-# break a selector in cases/*.json, run again → the step heals and the JSON is rewritten
-uv run groundhog suggest                            # untested scenarios inferred from the graph
-uv run groundhog list                               # saved cases, runs, heal counts
+uv run groundhog suggest                      # untested scenarios, inferred from the graph
+uv run groundhog list                         # saved cases, runs, heal counts
 ```
 
-Every run writes a markdown + JSON report to `runs/` with per-step mode
-(`static` / `fallback` / `healed` / `failed`), drift flags, and exact token
-spend — a fully static run reports **"Zero LLM calls"**.
+Break a selector in `cases/*.json` and run again — the step heals and the JSON
+is rewritten. Every run writes a markdown + JSON report to `runs/` with
+per-step mode (`static` / `fallback` / `healed` / `failed`), drift flags, and
+exact token spend.
 
 ## How a run works
 
-1. **Static replay.** Per step: drift gate (fingerprint of the pruned
-   accessibility snapshot vs the one stored at authoring) → try `selector`,
-   then `fallback_selectors` (zero LLM) → verify the step's `expects`
-   post-condition → no-op detection (a "successful" click that changed nothing
-   is a failure, not a silent pass).
-2. **Heal on failure only.** One FAST call gets the step's intent + current
-   snapshot; it returns a replacement selector or **refuses** (a Delete step
-   must never heal to Cancel — better to fail than act on the wrong element).
-   A heal is accepted only after it executes and passes `expects`, and is
-   persisted only if the whole run passes — then the case JSON is rewritten
-   (`meta.heals` history, `healed_count` as a flakiness signal) and the next
-   run is fully static again.
-3. **Assertions.** `deterministic` ones (`url_contains:…`, `text_visible:…`)
-   are checked directly; plain-English ones are judged by FAST against the
-   final snapshot with `{passed, confidence, reasoning}`.
+1. **Static replay.** Each step checks for page drift (a fingerprint of the
+   pruned accessibility snapshot), tries its selector, then its fallback
+   selectors — all without AI. A step's `expects` post-condition verifies it
+   actually worked; a "successful" click that changed nothing counts as a
+   failure, not a silent pass.
+2. **Heal on failure only.** One small AI call sees the step's intent and the
+   current page, and returns a replacement selector — or refuses. A heal is
+   accepted only after it executes and passes `expects`, and persisted only if
+   the whole run passes. Heal history stays in the case as a flakiness signal.
+3. **Assertions.** Deterministic ones (`url_contains:…`, `text_visible:…`) are
+   checked directly. Plain-English ones are judged by a fast model against the
+   final page, with a confidence score.
 
-## Model slots
+## How authoring works
 
-| Slot | Default | Used for |
+A planner reads the knowledge graph and drafts sub-goals. An executor agent
+performs them one at a time against your live app, verifying as it goes. An
+optimizer then distills the executed trace into the minimal replayable case —
+it keeps only selectors that actually ran, never invented ones.
+
+Test data is parameterized: `{{name}}` in your intent becomes a `--var` at run
+time, substituted into values, assertions, and selectors — so a test can open
+the entity it just created, but never keys on hard-coded data. The agent types
+real values while authoring (validated form fields reject braces); the saved
+case is re-parameterized automatically.
+
+## Configuration
+
+| Env var | Default | Used for |
 |---|---|---|
 | `SMART_MODEL` | `claude-sonnet-5` | planner, optimizer, suggest |
-| `FAST_MODEL` | `claude-haiku-4-5` | executor steps, healer, judge, crawl observe |
+| `FAST_MODEL` | `claude-haiku-4-5` | executor steps, healer, judge, crawl |
 
 ## Layout
 
@@ -94,15 +123,5 @@ cases/                   saved test cases (JSON — edit freely)
 runs/                    run reports
 ```
 
-Safety: the crawler never executes `mutation`/`destructive` elements — those
-edges enter the graph only from real test runs. Template vars (`{{name}}`)
-substitute into values, assertions, and selectors at run time — a selector may
-target an entity created earlier in the same test by its `{{var}}` name, but
-never a hard-coded data literal.
-
-Long flows (create a routing, a template, then an event that wires them
-together) author in one pass: stale page snapshots are elided from the agent's
-context as it works, and the action budget scales with the plan — so a
-40-action flow stays as crisp as a 5-action one. Authoring types the concrete
-`--var` values (validated name fields reject literal braces); the saved case is
-re-parameterized mechanically before it is written.
+Safety: the crawler never clicks anything that mutates or destroys data —
+those edges enter the graph only from real test runs.

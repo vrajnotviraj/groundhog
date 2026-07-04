@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <!-- groundhog mascot: pops out of its burrow, sees the same test, replays it -->
+  <defs>
+    <clipPath id="burrow-clip">
+      <rect x="0" y="0" width="256" height="196"/>
+    </clipPath>
+  </defs>
+
+  <!-- burrow mound -->
+  <ellipse cx="128" cy="208" rx="92" ry="26" fill="#7A5230"/>
+  <ellipse cx="128" cy="204" rx="78" ry="18" fill="#3E2A18"/>
+
+  <g clip-path="url(#burrow-clip)">
+    <!-- body -->
+    <rect x="76" y="120" width="104" height="110" rx="50" fill="#A9713F"/>
+    <!-- belly -->
+    <ellipse cx="128" cy="196" rx="34" ry="42" fill="#D9A876"/>
+
+    <!-- ears -->
+    <circle cx="88" cy="72" r="14" fill="#A9713F"/>
+    <circle cx="168" cy="72" r="14" fill="#A9713F"/>
+    <circle cx="88" cy="74" r="7" fill="#7A5230"/>
+    <circle cx="168" cy="74" r="7" fill="#7A5230"/>
+
+    <!-- head -->
+    <circle cx="128" cy="98" r="46" fill="#A9713F"/>
+
+    <!-- cheeks -->
+    <ellipse cx="97" cy="110" rx="9" ry="6" fill="#E8927C" opacity="0.65"/>
+    <ellipse cx="159" cy="110" rx="9" ry="6" fill="#E8927C" opacity="0.65"/>
+
+    <!-- eyes -->
+    <circle cx="111" cy="92" r="6.5" fill="#2B1B10"/>
+    <circle cx="145" cy="92" r="6.5" fill="#2B1B10"/>
+    <circle cx="113.5" cy="89.5" r="2.2" fill="#FFFFFF"/>
+    <circle cx="147.5" cy="89.5" r="2.2" fill="#FFFFFF"/>
+
+    <!-- muzzle -->
+    <ellipse cx="128" cy="112" rx="17" ry="13" fill="#D9A876"/>
+    <ellipse cx="128" cy="105" rx="6" ry="4.5" fill="#3E2A18"/>
+
+    <!-- buck teeth -->
+    <rect x="121" y="112" width="7" height="10" rx="2.5" fill="#FFFFFF"/>
+    <rect x="128.5" y="112" width="7" height="10" rx="2.5" fill="#FFFFFF"/>
+
+    <!-- paws on the burrow rim -->
+    <ellipse cx="94" cy="176" rx="13" ry="10" fill="#8A5A32"/>
+    <ellipse cx="162" cy="176" rx="13" ry="10" fill="#8A5A32"/>
+  </g>
+
+  <!-- grass tufts -->
+  <path d="M40 206 q3 -12 6 0 q3 -10 6 0" stroke="#5F8F3E" stroke-width="3" fill="none" stroke-linecap="round"/>
+  <path d="M204 206 q3 -12 6 0 q3 -10 6 0" stroke="#5F8F3E" stroke-width="3" fill="none" stroke-linecap="round"/>
+</svg>
