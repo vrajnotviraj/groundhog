@@ -1,0 +1,73 @@
+{
+  "name": "dashboard-data",
+  "intent": "Change the dashboard analytics range to Last 28 Days and verify the notification metrics are shown",
+  "start_path": "/:ws/home",
+  "steps": [
+    {
+      "id": "s1",
+      "action": "click",
+      "selector": "role=link[name=\"Dashboard\"]",
+      "fallback_selectors": [
+        "text=\"Dashboard\""
+      ],
+      "value": null,
+      "field": null,
+      "description": "Open the Dashboard from the sidebar",
+      "expects": {
+        "kind": "text_visible",
+        "value": "Notification Events Fired"
+      },
+      "page_fingerprint": null,
+      "healed_count": 0
+    },
+    {
+      "id": "s2",
+      "action": "click",
+      "selector": "text=\"Last 7 Days\"",
+      "fallback_selectors": [],
+      "value": null,
+      "field": null,
+      "description": "Open the analytics date range dropdown",
+      "expects": {
+        "kind": "text_visible",
+        "value": "Last 28 Days"
+      },
+      "page_fingerprint": null,
+      "healed_count": 0
+    },
+    {
+      "id": "s3",
+      "action": "click",
+      "selector": "text=\"Last 28 Days\"",
+      "fallback_selectors": [],
+      "value": null,
+      "field": null,
+      "description": "Select 'Last 28 Days' from the date range options",
+      "expects": {
+        "kind": "text_visible",
+        "value": "Last 28 Days"
+      },
+      "page_fingerprint": null,
+      "healed_count": 0
+    }
+  ],
+  "assertions": [
+    {
+      "assertion": "text_visible:Notification Events Fired",
+      "mode": "deterministic"
+    },
+    {
+      "assertion": "text_visible:Notifications Requested",
+      "mode": "deterministic"
+    },
+    {
+      "assertion": "text_visible:Notifications Sent",
+      "mode": "deterministic"
+    }
+  ],
+  "meta": {
+    "created_at": "2026-07-04T00:00:00Z",
+    "runs": 5,
+    "heals": []
+  }
+}
