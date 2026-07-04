@@ -8,3 +8,4 @@ neo4j-data/
 .pytest_cache/
 .docs/
 docs/
+CLAUDE.md
