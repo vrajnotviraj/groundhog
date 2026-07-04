@@ -1,0 +1,8 @@
+.env
+.venv/
+.auth/
+__pycache__/
+*.pyc
+runs/
+neo4j-data/
+.pytest_cache/
