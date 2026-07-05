@@ -59,9 +59,11 @@ steps store only the field name. Session cookies are cached under `.auth/`
 ## Use it
 
 `uv run` re-syncs dependencies on every call, which is why the commands below
-use it. Drop the prefix with `alias groundhog='uv run groundhog'` in your
-shell rc — an activated venv (`source .venv/bin/activate`) works too, but
-ties every command in that shell to this one venv.
+use it. For a real `groundhog` command on your `PATH` instead, install it as
+a uv tool once: `uv tool install --editable .` — editable means it keeps
+running your local code, not a frozen copy. (A plain shell alias to `uv run
+groundhog` is a lighter option, but it's just a shorthand, not a real
+install — it still re-syncs on every call.)
 
 ```sh
 uv run groundhog doctor                       # check API key, app URL, Neo4j, login flow
