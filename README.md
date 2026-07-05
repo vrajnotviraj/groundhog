@@ -58,6 +58,11 @@ steps store only the field name. Session cookies are cached under `.auth/`
 
 ## Use it
 
+`uv run` re-syncs dependencies on every call, which is why the commands below
+use it. Drop the prefix with `alias groundhog='uv run groundhog'` in your
+shell rc — an activated venv (`source .venv/bin/activate`) works too, but
+ties every command in that shell to this one venv.
+
 ```sh
 uv run groundhog doctor                       # check API key, app URL, Neo4j, login flow
 uv run groundhog crawl --scope templates      # map your app into the knowledge graph
@@ -114,7 +119,7 @@ case is re-parameterized automatically.
 
 ```
 groundhog/
-  cli.py                 crawl · new · run · list · show · suggest
+  cli.py                 crawl · new · run · list · show · suggest · doctor
   config.py              env, model slots, budgets
   browser/               session+login · snapshot pruning+fingerprints · step execution · selector rules
   llm/                   Anthropic wrapper (structured output, caching, usage counter) · prompts/*.md
