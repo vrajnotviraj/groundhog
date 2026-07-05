@@ -9,9 +9,9 @@
 Groundhog is end-to-end testing for SaaS apps. That's it.
 
 Today you have two bad options for testing a web app. Write Playwright scripts
-by hand — slow to write, and they break every time the UI changes. Or let an AI
-agent drive the browser on every run — resilient, but slow and you pay tokens
-for every single test, every single time.
+by hand: slow to write, and they break every time the UI changes. Or let an AI
+agent drive the browser on every run: resilient, but slow, and you pay tokens
+for every single test, every time.
 
 Groundhog does the smart part once. An AI agent turns your plain-English intent
 into a JSON test case. Every run after that is a static Playwright replay: fast,
@@ -23,9 +23,9 @@ Like the movie: it wakes up, sees the same day, and gets a little better at it.
 
 ## What you get
 
-- **Write tests in English.** `groundhog new "create an SMS template named {{name}} and verify it appears in the list"` — the agent drives your real app, then saves a replayable case.
+- **Write tests in English.** `groundhog new "create an SMS template named {{name}} and verify it appears in the list"`: the agent drives your real app, then saves a replayable case.
 - **Runs cost nothing.** A green run makes zero AI calls. The report says so explicitly: "Zero LLM calls".
-- **Tests fix themselves.** A broken selector triggers one small AI call that heals it — and refuses when healing would be dangerous (a Delete step never heals to Cancel).
+- **Tests fix themselves.** A broken selector triggers one small AI call that heals it, and refuses when healing would be dangerous (a Delete step never heals to Cancel).
 - **Your app gets mapped.** A crawler builds a knowledge graph of your app in Neo4j. Every run enriches it. `groundhog suggest` tells you what you haven't tested yet.
 - **Long flows work.** "Create a route, then a template, then an event that wires them together" authors in one pass and replays statically.
 
@@ -36,7 +36,7 @@ You need [uv](https://docs.astral.sh/uv/), Docker (optional), and an Anthropic A
 ```sh
 git clone <this repo> && cd groundhog
 uv sync && uv run playwright install chromium
-docker compose up -d          # Neo4j — optional, everything degrades gracefully without it
+docker compose up -d          # Neo4j (optional): degrades gracefully without it
 cp .env.example .env          # fill in BASE_URL, LOGIN_USER/PASS/WORKSPACE, ANTHROPIC_API_KEY
 ```
 
@@ -52,7 +52,7 @@ the selectors:
 ]}
 ```
 
-Credentials stay in `.env`. They never reach the LLM or disk — `fill_secret`
+Credentials stay in `.env`. They never reach the LLM or disk: `fill_secret`
 steps store only the field name. Session cookies are cached under `.auth/`
 (gitignored) so login replays only when the session expires.
 
@@ -62,12 +62,12 @@ steps store only the field name. Session cookies are cached under `.auth/`
 uv run groundhog crawl --scope templates      # map your app into the knowledge graph
 uv run groundhog new "create an SMS template named {{name}} and verify it appears in the list" --var name=gh-seed
 uv run groundhog run create-an-sms-template --var name=gh-1   # static replay, zero AI
-uv run groundhog run create-an-sms-template --var name=gh-2   # again — still static
+uv run groundhog run create-an-sms-template --var name=gh-2   # again, still static
 uv run groundhog suggest                      # untested scenarios, inferred from the graph
 uv run groundhog list                         # saved cases, runs, heal counts
 ```
 
-Break a selector in `cases/*.json` and run again — the step heals and the JSON
+Break a selector in `cases/*.json` and run again: the step heals and the JSON
 is rewritten. Every run writes a markdown + JSON report to `runs/` with
 per-step mode (`static` / `fallback` / `healed` / `failed`), drift flags, and
 exact token spend.
@@ -76,11 +76,11 @@ exact token spend.
 
 1. **Static replay.** Each step checks for page drift (a fingerprint of the
    pruned accessibility snapshot), tries its selector, then its fallback
-   selectors — all without AI. A step's `expects` post-condition verifies it
+   selectors, all without AI. A step's `expects` post-condition verifies it
    actually worked; a "successful" click that changed nothing counts as a
    failure, not a silent pass.
 2. **Heal on failure only.** One small AI call sees the step's intent and the
-   current page, and returns a replacement selector — or refuses. A heal is
+   current page, and returns a replacement selector, or refuses. A heal is
    accepted only after it executes and passes `expects`, and persisted only if
    the whole run passes. Heal history stays in the case as a flakiness signal.
 3. **Assertions.** Deterministic ones (`url_contains:…`, `text_visible:…`) are
@@ -91,11 +91,11 @@ exact token spend.
 
 A planner reads the knowledge graph and drafts sub-goals. An executor agent
 performs them one at a time against your live app, verifying as it goes. An
-optimizer then distills the executed trace into the minimal replayable case —
-it keeps only selectors that actually ran, never invented ones.
+optimizer then distills the executed trace into the minimal replayable case.
+It keeps only selectors that actually ran, never invented ones.
 
 Test data is parameterized: `{{name}}` in your intent becomes a `--var` at run
-time, substituted into values, assertions, and selectors — so a test can open
+time, substituted into values, assertions, and selectors, so a test can open
 the entity it just created, but never keys on hard-coded data. The agent types
 real values while authoring (validated form fields reject braces); the saved
 case is re-parameterized automatically.
@@ -119,9 +119,9 @@ groundhog/
   graph/                 Neo4j store (single write path) · queries · ingest
   crawl/                 budgeted BFS crawler · LLM page observation
   cases/ runner/         case schema+store · replay orchestration · reports
-cases/                   saved test cases (JSON — edit freely)
+cases/                   saved test cases (JSON, edit freely)
 runs/                    run reports
 ```
 
-Safety: the crawler never clicks anything that mutates or destroys data —
-those edges enter the graph only from real test runs.
+Safety: the crawler never clicks anything that mutates or destroys data.
+Those edges enter the graph only from real test runs.
