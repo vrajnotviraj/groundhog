@@ -46,50 +46,59 @@ def crawl(scope: str = "/", max_pages: int | None = None, headless: bool = True)
 
         queue: list[tuple[str, int]] = [(root, 0)]
         seen = {root}
-        while queue and stats["pages"] < max_pages:
-            key, depth = queue.pop(0)
-            url = f"{config.BASE_URL}{key.replace('/:ws', '/' + session.ws)}"
-            try:
-                goto_app(page, url)
-            except Exception as e:
-                console.print(f"  [red]✗[/] {key} — {str(e).splitlines()[0]}")
-                continue
-            landed = store.page_key(page.url)
-            console.print(f"[cyan]crawl[/] {landed} (depth {depth})")
-            stats["pages"] += 1
-
-            links = _harvest_links(page)
-            from groundhog.crawl.observe import observe
-
-            elements = observe(page)
-            transitions = [(f'role=link[name="{l["text"]}"]', "click",
-                            f"{config.BASE_URL}{l['key']}") for l in links if l["text"]]
-
-            # Execute only safe nav clicks to surface JS-driven transitions.
-            clicked = 0
-            for el in elements:
-                if el.kind != "nav" or clicked >= NAV_CLICKS_PER_PAGE:
-                    continue
-                before = page.url
-                try:
-                    page.locator(el.selector).first.click(timeout=3000)
-                    settle(page)
-                except Exception:
-                    continue
-                clicked += 1
-                if store.page_key(page.url) != store.page_key(before):
-                    transitions.append((el.selector, "click", page.url))
-                    _enqueue(store.page_key(page.url), depth + 1, queue, seen, in_scope)
-                    goto_app(page, before)
-
-            ingest_crawl(page.url if landed == key else url, page.title(), elements, transitions)
-            stats["elements"] += len(elements)
-            stats["transitions"] += len(transitions)
-
-            if depth < config.CRAWL_MAX_DEPTH:
-                for l in links:
-                    _enqueue(l["key"], depth + 1, queue, seen, in_scope)
+        try:
+            _bfs(page, session, queue, seen, in_scope, max_pages, stats)
+        except KeyboardInterrupt:
+            # Ctrl-C on a long crawl: every finished page is already ingested,
+            # so stop cleanly and keep the graph instead of dying mid-BFS.
+            console.print(f"[yellow]interrupted — keeping {stats['pages']} crawled page(s)[/]")
     return stats
+
+
+def _bfs(page, session, queue, seen, in_scope, max_pages: int, stats: dict) -> None:
+    while queue and stats["pages"] < max_pages:
+        key, depth = queue.pop(0)
+        url = f"{config.BASE_URL}{key.replace('/:ws', '/' + session.ws)}"
+        try:
+            goto_app(page, url)
+        except Exception as e:
+            console.print(f"  [red]✗[/] {key} — {str(e).splitlines()[0]}")
+            continue
+        landed = store.page_key(page.url)
+        console.print(f"[cyan]crawl[/] {landed} (depth {depth})")
+        stats["pages"] += 1
+
+        links = _harvest_links(page)
+        from groundhog.crawl.observe import observe
+
+        elements = observe(page)
+        transitions = [(f'role=link[name="{l["text"]}"]', "click",
+                        f"{config.BASE_URL}{l['key']}") for l in links if l["text"]]
+
+        # Execute only safe nav clicks to surface JS-driven transitions.
+        clicked = 0
+        for el in elements:
+            if el.kind != "nav" or clicked >= NAV_CLICKS_PER_PAGE:
+                continue
+            before = page.url
+            try:
+                page.locator(el.selector).first.click(timeout=3000)
+                settle(page)
+            except Exception:
+                continue
+            clicked += 1
+            if store.page_key(page.url) != store.page_key(before):
+                transitions.append((el.selector, "click", page.url))
+                _enqueue(store.page_key(page.url), depth + 1, queue, seen, in_scope)
+                goto_app(page, before)
+
+        ingest_crawl(page.url if landed == key else url, page.title(), elements, transitions)
+        stats["elements"] += len(elements)
+        stats["transitions"] += len(transitions)
+
+        if depth < config.CRAWL_MAX_DEPTH:
+            for l in links:
+                _enqueue(l["key"], depth + 1, queue, seen, in_scope)
 
 
 def _enqueue(key: str, depth: int, queue: list, seen: set, in_scope) -> None:

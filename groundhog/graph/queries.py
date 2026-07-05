@@ -41,6 +41,15 @@ def slice_for_intent(intent: str, max_pages: int = 5, max_elements: int = 12) ->
                 continue
             to = f" → {e['to']}" if e["to"] else ""
             lines.append(f"  [{e['kind']}] {e['selector']} — {e['description'] or e['name']}{to}")
+    # Docs-learned cross-feature hints for multi-entity flows; empty (zero
+    # cost) until a docs pass has created Feature nodes.
+    secs = sorted({store.section(r["page"]) for r in rows})
+    feats = store.run("""
+        MATCH (f:Feature)-[r:RELATED_TO]-(g:Feature) WHERE f.name IN $secs
+        RETURN DISTINCT f.name AS a, g.name AS b, r.how AS how LIMIT 8""", secs=secs)
+    if feats:
+        lines.append("related features:")
+        lines += [f"  {r['a']} — {r['b']}: {r['how']}" for r in feats]
     return "\n".join(lines)
 
 

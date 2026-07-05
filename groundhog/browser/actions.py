@@ -112,6 +112,23 @@ def perform(page: Page, step: Step, ctx: Ctx, selector: str | None = None) -> No
         loc.press(value or "Enter", timeout=timeout)
     elif step.action == "wait_for":
         loc.wait_for(state="visible", timeout=timeout)
+    elif step.action == "drag":
+        # drag_to covers HTML5-dnd palettes but no-ops silently on d3-drag
+        # handles (it does not throw) — an unchanged fingerprint after settle
+        # triggers a manual mouse drag, with intermediate move events while
+        # pressed, which is what d3-drag needs to register.
+        dst = page.locator(render(step.to_selector or "", ctx.vars)).first
+        fp_before = fingerprint(snapshot(page))
+        loc.drag_to(dst, timeout=timeout)
+        settle(page)
+        if fingerprint(snapshot(page)) == fp_before:
+            loc.hover(timeout=timeout)
+            page.mouse.down()
+            box = dst.bounding_box()
+            if box:
+                page.mouse.move(box["x"] + box["width"] / 2,
+                                box["y"] + box["height"] / 2, steps=15)
+            page.mouse.up()
     settle(page)
 
 
@@ -172,12 +189,12 @@ def run_step(page: Page, step: Step, ctx: Ctx) -> StepOutcome:
         if step.expects and not check_expects(page, step.expects, ctx):
             return StepOutcome(ok=False, selector=sel, mode=mode, drift=drift,
                                error=f"expects failed: {step.expects.kind}={step.expects.value!r}")
-        # A "successful" click that changed nothing is a silent no-op — fail it
-        # so it can heal. Only when the step has no expects of its own.
-        if step.action == "click" and not step.expects:
+        # A "successful" click or drag that changed nothing is a silent no-op —
+        # fail it so it gets reported. Only when the step has no expects of its own.
+        if step.action in ("click", "drag") and not step.expects:
             if page.url == before_url and fingerprint(snapshot(page)) == before_fp:
                 return StepOutcome(ok=False, selector=sel, mode=mode, drift=drift,
-                                   error="no-op: click changed nothing on the page")
+                                   error=f"no-op: {step.action} changed nothing on the page")
         return StepOutcome(ok=True, selector=sel, mode=mode, drift=drift)
 
     return StepOutcome(ok=False, drift=drift, error=last_error or "no usable selector")

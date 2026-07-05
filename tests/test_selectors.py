@@ -16,6 +16,14 @@ def test_weak_selectors_rejected():
     assert not is_weak('input[type="checkbox"]')
 
 
+def test_reactflow_selectors_pass_existing_gate():
+    # Anchored ReactFlow shapes are durable; bare canvas classes are not.
+    assert not is_weak('.react-flow__node:has-text("SMS")')
+    assert not is_weak('.react-flow__node[data-id="n1"] .react-flow__handle.source')
+    assert is_weak(".react-flow__handle")
+    assert is_weak(".react-flow__node")
+
+
 def test_rank_prefers_durable_shapes():
     ordered = ['[data-testid="x"]', "#save", '[aria-label="Close"]',
                'role=button[name="Save"]', '[placeholder="Name"]', 'text="Save"']

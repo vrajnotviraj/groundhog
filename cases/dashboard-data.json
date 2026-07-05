@@ -10,6 +10,7 @@
       "fallback_selectors": [
         "text=\"Dashboard\""
       ],
+      "to_selector": null,
       "value": null,
       "field": null,
       "description": "Open the Dashboard from the sidebar",
@@ -25,6 +26,7 @@
       "action": "click",
       "selector": "text=\"Last 7 Days\"",
       "fallback_selectors": [],
+      "to_selector": null,
       "value": null,
       "field": null,
       "description": "Open the analytics date range dropdown",
@@ -40,6 +42,7 @@
       "action": "click",
       "selector": "text=\"Last 28 Days\"",
       "fallback_selectors": [],
+      "to_selector": null,
       "value": null,
       "field": null,
       "description": "Select 'Last 28 Days' from the date range options",
@@ -67,7 +70,7 @@
   ],
   "meta": {
     "created_at": "2026-07-04T00:00:00Z",
-    "runs": 5,
+    "runs": 6,
     "heals": []
   }
 }

@@ -10,11 +10,16 @@ import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
+from rich.console import Console
+
 from groundhog import config
 from groundhog.browser.actions import Ctx, check_expects, goto_app, run_step, settle
 from groundhog.browser.session import Session
 from groundhog.cases.schema import Assertion, Case, Expect, Heal
 from groundhog.cases.store import render, save
+
+console = Console()
+MODE_STYLE = {"static": "dim", "fallback": "yellow", "healed": "magenta", "failed": "red", "skipped": "dim"}
 
 
 @dataclass
@@ -81,34 +86,38 @@ def run_case(case: Case, session: Session, vars: dict[str, str] | None = None,
 
     healed_steps: list[tuple[str, Heal]] = []
     aborted = False
-    for step in case.steps:
+    for i, step in enumerate(case.steps, 1):
         if aborted:
-            result.steps.append(StepResult(step.id, step.description, "skipped", step.selector, 0))
-            continue
-        t0 = time.monotonic()
-        outcome = run_step(page, step, ctx)
-        mode, selector, error = outcome.mode, outcome.selector or step.selector, outcome.error
-
-        if not outcome.ok and heal and step.action != "goto":
-            fix = _try_heal(page, step, ctx, error)
-            if fix:
-                mode, selector, error = "healed", fix.new, None
-                healed_steps.append((step.id, fix))
-                outcome.ok = True
-
-        ms = int((time.monotonic() - t0) * 1000)
-        if outcome.ok:
-            result.steps.append(StepResult(step.id, step.description, mode, selector, ms, outcome.drift))
+            s = StepResult(step.id, step.description, "skipped", step.selector, 0)
         else:
-            result.steps.append(StepResult(step.id, step.description, "failed", selector, ms, outcome.drift, error))
-            aborted = True  # linear flows can't recover once a step leaves the wrong state
+            t0 = time.monotonic()
+            outcome = run_step(page, step, ctx)
+            mode, selector, error = outcome.mode, outcome.selector or step.selector, outcome.error
+
+            # drag never heals: two endpoints double the wrong-element risk, and a
+            # mis-healed edge silently rewires the workflow — fail honestly instead.
+            if not outcome.ok and heal and step.action not in ("goto", "drag"):
+                fix = _try_heal(page, step, ctx, error)
+                if fix:
+                    mode, selector, error = "healed", fix.new, None
+                    healed_steps.append((step.id, fix))
+                    outcome.ok = True
+
+            ms = int((time.monotonic() - t0) * 1000)
+            if outcome.ok:
+                s = StepResult(step.id, step.description, mode, selector, ms, outcome.drift)
+            else:
+                s = StepResult(step.id, step.description, "failed", selector, ms, outcome.drift, error)
+                aborted = True  # linear flows can't recover once a step leaves the wrong state
+        result.steps.append(s)
+        style = MODE_STYLE.get(s.mode, "")
+        console.print(f"  [{style}]{s.mode:>8}[/] {i}. {s.description}" + (f" [red]— {s.error}[/]" if s.error else ""))
 
     if not aborted:
         for a in case.assertions:
-            if a.mode == "deterministic":
-                result.assertions.append(_check_deterministic(page, a, ctx))
-            else:
-                result.assertions.append(_judge_llm(page, a, ctx))
+            r = _check_deterministic(page, a, ctx) if a.mode == "deterministic" else _judge_llm(page, a, ctx)
+            result.assertions.append(r)
+            console.print(f"  [{'green' if r.passed else 'red'}]{'✓' if r.passed else '✗'}[/] {r.assertion} — {r.reasoning}")
 
     result.healed = len(healed_steps)
     result.passed = (not aborted

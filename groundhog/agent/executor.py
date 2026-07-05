@@ -48,6 +48,12 @@ TOOLS = [
     _tool("press", "Press a key on an element (e.g. Enter).",
           {"selector": _SEL, "value": {"type": "string", "description": "key, e.g. Enter"}, "description": _DESC},
           ["selector", "value", "description"]),
+    _tool("drag", "Drag one element onto another: a palette item onto the canvas, or a "
+          "node's source handle onto another node's target handle to connect them.",
+          {"selector": _SEL,
+           "to_selector": {"type": "string", "description": "locator for the drop target you saw in the snapshot"},
+           "fallback_selectors": _FALLBACKS, "description": _DESC},
+          ["selector", "to_selector", "description"]),
     _tool("read_docs", "Fetch a product documentation page as plain text.",
           {"url": {"type": "string"}}, ["url"]),
     _tool("done", "Finish: the intent is accomplished and verified on the live page.",
@@ -56,17 +62,6 @@ TOOLS = [
                           "description": "1-3 plain-English outcomes true on the final page"}},
           ["start_path", "assertions"]),
 ]
-
-
-def _read_docs(url: str) -> str:
-    import httpx
-
-    if not url.startswith(config.DOCS_URL):
-        return f"error: only {config.DOCS_URL} pages can be read"
-    text = httpx.get(url, follow_redirects=True, timeout=15).text
-    text = re.sub(r"<(script|style)[^>]*>.*?</\1>", " ", text, flags=re.S)
-    text = re.sub(r"<[^>]+>", " ", text)
-    return re.sub(r"\s+", " ", text)[:4000]
 
 
 _STATE_MARK = "Current URL: "
@@ -112,11 +107,12 @@ def _templatize(obj, vars: dict[str, str] | None):
 
 
 def run_executor(page, ctx: Ctx, intent: str, plan_steps: list[str], notes: str = "",
-                 max_actions: int = 0) -> tuple[list[dict], dict | None]:
+                 max_actions: int = 0, trace: list[dict] | None = None) -> tuple[list[dict], dict | None]:
     """Drive the loop; returns (trace, done_payload). done_payload is None when
-    the action budget ran out before the agent finished."""
+    the action budget ran out before the agent finished. The caller may supply
+    the trace list so actions recorded before a mid-loop crash survive it."""
     system = client.prompt("executor", context="")
-    trace: list[dict] = []
+    trace = [] if trace is None else trace
     steps_text = "\n".join(f"{i}. {s}" for i, s in enumerate(plan_steps, 1))
     messages = [{"role": "user", "content":
                  f"Intent: {intent}\n\nDraft plan (context only — verify against the live page):\n{steps_text}\n"
@@ -157,13 +153,17 @@ def run_executor(page, ctx: Ctx, intent: str, plan_steps: list[str], notes: str 
 def _execute(page, ctx: Ctx, action: str, inp: dict, trace: list[dict],
              failed: dict[tuple[str, str], int]) -> dict:
     if action == "read_docs":
-        return {"ok": True, "text": _read_docs(inp.get("url", ""))}
+        from groundhog.crawl.docs import read_docs_page
+
+        return {"ok": True, "text": read_docs_page(inp.get("url", ""))}
 
     # Deterministic gates before touching the browser — a bad selector otherwise
     # costs a full step timeout per attempt.
     key = (action, inp.get("selector") or "")
-    if action != "goto" and is_weak(inp.get("selector")):
-        return {"ok": False, "text": "error: weak selector — purely structural CSS (bare tags, "
+    weak = ("selector" if action != "goto" and is_weak(inp.get("selector"))
+            else "to_selector" if action == "drag" and is_weak(inp.get("to_selector")) else None)
+    if weak:
+        return {"ok": False, "text": f"error: weak {weak} — purely structural CSS (bare tags, "
                                      "descendant chains, :nth pseudos, snapshot role names like "
                                      "'combobox' used as tags) cannot be durable. Use "
                                      'role=…[name="…"], [aria-label="…"], [placeholder="…"], #id, or text="…".'}
@@ -177,6 +177,7 @@ def _execute(page, ctx: Ctx, action: str, inp: dict, trace: list[dict],
     step = Step(
         id="", action="goto" if action == "goto" else action,
         selector=inp.get("selector"),
+        to_selector=inp.get("to_selector"),
         value=inp.get("path") if action == "goto" else inp.get("value"),
         field=inp.get("field"),
         description=inp.get("description", ""),
@@ -193,6 +194,7 @@ def _execute(page, ctx: Ctx, action: str, inp: dict, trace: list[dict],
                                if not embeds_value(s, step.value)])[:2]
     trace.append({
         "action": step.action, "selector": step.selector, "fallback_selectors": fallbacks,
+        "to_selector": step.to_selector,
         "value": None if action == "fill_secret" else step.value,
         "field": step.field, "description": step.description,
         "url_before": url_before, "url_after": page.url,
@@ -200,6 +202,20 @@ def _execute(page, ctx: Ctx, action: str, inp: dict, trace: list[dict],
     })
     console.print(f"  [green]·[/] {escape(step.description)}")
     return {"ok": True, "text": f"ok\n\n{_page_state(page)}"}
+
+
+def _dump_partial(name: str, trace: list[dict]) -> str:
+    """Executor work is the expensive part of authoring; when it dies partway,
+    park the recorded actions in runs/ so they can be inspected or salvaged
+    instead of re-paid."""
+    import json
+    from datetime import datetime, timezone
+
+    config.RUNS_DIR.mkdir(exist_ok=True)
+    ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    path = config.RUNS_DIR / f"{name}-partial-{ts}.json"
+    path.write_text(json.dumps(trace, indent=2) + "\n")
+    return str(path)
 
 
 def _derive_name(intent: str) -> str:
@@ -233,11 +249,19 @@ def author_case(intent: str, name: str | None = None, headless: bool = True,
         # Long flows: scale the runaway guard with plan size — ~5 live actions per
         # sub-goal absorbs retries and verification without letting a lost agent spin.
         budget = max(config.EXECUTOR_MAX_ACTIONS, 5 * len(draft.steps))
-        trace, done = run_executor(page, ctx, live_intent, draft.steps, draft.notes, max_actions=budget)
+        trace: list[dict] = []
+        try:
+            trace, done = run_executor(page, ctx, live_intent, draft.steps, draft.notes,
+                                       max_actions=budget, trace=trace)
+        except Exception:
+            if trace:
+                console.print(f"[yellow]partial trace saved: {_dump_partial(name, trace)}[/]")
+            raise
         if not trace:
             raise RuntimeError("executor recorded no successful actions — nothing to save")
         if done is None:
-            raise RuntimeError(f"executor hit the {budget}-action budget before finishing")
+            raise RuntimeError(f"executor hit the {budget}-action budget before finishing — "
+                               f"partial trace: {_dump_partial(name, trace)}")
 
     trace, done = _templatize(trace, vars), _templatize(done, vars)
     case = optimize(name, intent, trace, done)

@@ -1,4 +1,4 @@
-from groundhog.browser.snapshot import fingerprint, prune_tree
+from groundhog.browser.snapshot import fingerprint, format_canvas, prune_tree
 
 
 def _tree(n):
@@ -21,6 +21,23 @@ def test_prune_caps_total_lines():
     pruned = prune_tree(text, max_lines=250)
     assert len(pruned.split("\n")) == 251
     assert "more lines truncated" in pruned
+
+
+def test_format_canvas_renders_nodes_handles_edges():
+    data = {"nodes": [{"id": "n1", "label": "SMS", "handles": ["source", "target"]},
+                      {"id": "n2", "label": "Trigger", "handles": []}],
+            "edges": ["Edge from n1 to n2"]}
+    block = format_canvas(data)
+    assert block.startswith("Canvas (ReactFlow):")
+    assert '- node data-id="n1" "SMS" handles: source, target' in block
+    assert '- node data-id="n2" "Trigger"' in block
+    assert '- edge "Edge from n1 to n2"' in block
+
+
+def test_format_canvas_empty_or_malformed_renders_nothing():
+    assert format_canvas({"nodes": [], "edges": []}) == ""
+    assert format_canvas(None) == ""
+    assert format_canvas({"nodes": "garbage"}) == ""
 
 
 def test_fingerprint_ignores_live_numbers():

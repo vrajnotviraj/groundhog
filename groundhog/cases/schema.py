@@ -4,7 +4,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-Action = Literal["goto", "click", "fill", "fill_secret", "select", "press", "wait_for"]
+Action = Literal["goto", "click", "fill", "fill_secret", "select", "press", "wait_for", "drag"]
 
 
 class Expect(BaseModel):
@@ -21,6 +21,8 @@ class Step(BaseModel):
     # Ranked alternates captured at authoring time, so most drift heals with
     # zero LLM calls — just walk the list.
     fallback_selectors: list[str] = Field(default_factory=list)
+    # Drop target for drag; healing never rewrites it.
+    to_selector: str | None = None
     value: str | None = None
     # fill_secret stores only the field name; the value is injected from env.
     field: Literal["user", "pass"] | None = None

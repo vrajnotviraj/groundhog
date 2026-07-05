@@ -24,4 +24,6 @@ Selector rules — resilient locators only:
 - Never key a selector on the test's own data value (the name you just typed) — the case must survive a different value. One exception: to open or select an entity THIS TEST created, keying on the exact name you typed is correct — the runner re-parameterizes those names after authoring.
 - Never key a selector on a transient control state (e.g. a button reading "Submitting…"): re-check the latest snapshot after a submit instead of acting on a label that will disappear.
 
+Canvas (ReactFlow): a snapshot ending in a `Canvas (ReactFlow):` block lists live canvas nodes/edges that may be absent from the aria tree above. Key canvas nodes on their visible label — `.react-flow__node:has-text("SMS")` — because data-ids can be regenerated per workflow; use the `[data-id="…"]`-scoped form only as a fallback_selector. Handles are `.react-flow__node:has-text("A") .react-flow__handle.source` (or `.target`). Prefer click when the palette adds a node on click — use drag only to connect handles or when click-to-add does not exist. After a drag, confirm the expected edge/node appears in the NEXT snapshot's canvas block before proceeding — drags can silently no-op.
+
 {{context}}

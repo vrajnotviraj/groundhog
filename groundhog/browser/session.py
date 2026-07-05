@@ -26,6 +26,19 @@ FLOW = config.AUTH_DIR / "login.json"
 WS_ID = re.compile(r"^/(FY[A-Z0-9]{6,})/")
 
 
+def _storage_state() -> str | None:
+    """Path to the cached session state, or None when missing or corrupt.
+    A crash mid-write leaves truncated JSON; a fresh login costs one flow
+    replay, while feeding Playwright a broken file kills the whole run."""
+    if not STATE.exists():
+        return None
+    try:
+        json.loads(STATE.read_text())
+    except ValueError:
+        return None
+    return str(STATE)
+
+
 class Session:
     def __init__(self, headless: bool | None = None):
         self.headless = config.HEADLESS if headless is None else headless
@@ -34,8 +47,7 @@ class Session:
     def __enter__(self) -> "Session":
         self._pw = sync_playwright().start()
         self._browser = self._pw.chromium.launch(headless=self.headless)
-        state = str(STATE) if STATE.exists() else None
-        self._context = self._browser.new_context(storage_state=state)
+        self._context = self._browser.new_context(storage_state=_storage_state())
         self.page: Page = self._context.new_page()
         return self
 

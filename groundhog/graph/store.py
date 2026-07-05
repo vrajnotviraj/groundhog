@@ -6,7 +6,9 @@ Schema:
   (:Page    {key, url_pattern, title, section, last_seen})
   (:Element {key, selector, role, name, kind, description, last_seen})
   (:Case    {name, intent, file, last_run, status})
-  (:Page)-[:HAS]->(:Element)
+  (:Feature {name, summary, last_seen})   — name is always a Page.section value
+  (:Page)-[:HAS]->(:Element)   (:Page)-[:IN_FEATURE]->(:Feature)
+  (:Feature)-[:RELATED_TO {how, source, last_seen}]->(:Feature)
   (:Element)-[:LEADS_TO {action}]->(:Page)
   (:Case)-[:COVERS]->(:Page)   (:Case)-[:EXERCISES]->(:Element)
 """
@@ -80,6 +82,24 @@ def upsert_transition(page: str, selector: str, action: str, to_page: str) -> No
            MERGE (e)-[r:LEADS_TO]->(t)
            SET r.action = $action""",
         ekey=element_key(page, selector), to=to_page, tsection=section(to_page), action=action)
+
+
+def upsert_feature(name: str, summary: str = "") -> None:
+    # Page linking rides the same write: name IS a section, so IN_FEATURE
+    # needs no second query.
+    run("""MERGE (f:Feature {name: $name})
+           SET f.last_seen = datetime()
+           FOREACH (_ IN CASE WHEN $summary <> '' THEN [1] ELSE [] END | SET f.summary = $summary)
+           WITH f MATCH (p:Page {section: $name}) MERGE (p)-[:IN_FEATURE]->(f)""",
+        name=name, summary=summary)
+
+
+def upsert_feature_relation(frm: str, to: str, how: str, source: str) -> None:
+    run("""MERGE (a:Feature {name: $frm})
+           MERGE (b:Feature {name: $to})
+           MERGE (a)-[r:RELATED_TO]->(b)
+           SET r.how = $how, r.source = $source, r.last_seen = datetime()""",
+        frm=frm, to=to, how=how, source=source)
 
 
 def upsert_case(name: str, intent: str, status: str = "") -> None:

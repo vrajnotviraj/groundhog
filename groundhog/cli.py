@@ -11,11 +11,30 @@ from groundhog.cases import store
 app = typer.Typer(no_args_is_help=True, add_completion=False)
 console = Console()
 
-MODE_STYLE = {"static": "dim", "fallback": "yellow", "healed": "magenta", "failed": "red", "skipped": "dim"}
-
 
 def _parse_vars(pairs: list[str]) -> dict[str, str]:
     return dict(p.split("=", 1) for p in pairs)
+
+
+def _need_llm() -> None:
+    """Fail fast with a hint instead of a deep SDK auth traceback mid-run."""
+    from groundhog import config
+
+    if not config.ANTHROPIC_API_KEY:
+        console.print("[red]ANTHROPIC_API_KEY is not set — add it to .env[/]")
+        raise typer.Exit(2)
+
+
+def _need_graph() -> None:
+    """Fail fast when Neo4j is required (crawl/suggest) rather than optional."""
+    from groundhog import config
+    from groundhog.graph import store
+
+    try:
+        store.driver()
+    except Exception:
+        console.print(f"[red]Neo4j is not reachable at {config.NEO4J_URI} — docker compose up -d[/]")
+        raise typer.Exit(2)
 
 
 @app.command()
@@ -33,12 +52,6 @@ def run(name: str, var: list[str] = typer.Option([], help="template var, e.g. --
         session.ensure_logged_in()
         result = run_case(case, session, vars=_parse_vars(var), heal=not no_heal)
 
-    for i, s in enumerate(result.steps, 1):
-        style = MODE_STYLE.get(s.mode, "")
-        console.print(f"  [{style}]{s.mode:>8}[/] {i}. {s.description}" + (f" [red]— {s.error}[/]" if s.error else ""))
-    for a in result.assertions:
-        console.print(f"  [{'green' if a.passed else 'red'}]{'✓' if a.passed else '✗'}[/] {a.assertion} — {a.reasoning}")
-
     report = write_report(result, tokens=client.usage_snapshot())
     console.print(f"\n[{'green' if result.passed else 'red'}]{'PASSED' if result.passed else 'FAILED'}[/] "
                   f"in {result.total_ms}ms · {result.healed} healed · report: {report}")
@@ -51,6 +64,7 @@ def new(intent: str, name: str = typer.Option(None, help="case name (kebab-case)
                                                "the saved case is re-parameterized automatically"),
         headed: bool = typer.Option(False, help="show the browser")):
     """Author a new case from a natural-language intent (agentic, one-time cost)."""
+    _need_llm()
     from groundhog.agent.executor import author_case
 
     case = author_case(intent, name=name, headless=not headed, vars=_parse_vars(var))
@@ -74,21 +88,70 @@ def show(name: str):
 
 @app.command()
 def crawl(scope: str = typer.Option("/", help="restrict to one feature, e.g. /templates"),
-          max_pages: int = typer.Option(None), headed: bool = typer.Option(False)):
+          max_pages: int = typer.Option(None), headed: bool = typer.Option(False),
+          docs: bool = typer.Option(False, help="also read the product docs into a Feature relationship layer")):
     """Crawl the app into the Neo4j knowledge graph (feature-scoped, budgeted)."""
+    _need_llm()
+    _need_graph()  # both the crawl and the --docs pass write through the graph
     from groundhog.crawl.crawler import crawl as do_crawl
 
     stats = do_crawl(scope=scope, max_pages=max_pages, headless=not headed)
     console.print(f"[green]crawled[/] {stats['pages']} pages, {stats['elements']} elements, {stats['transitions']} transitions")
+    if docs:
+        from groundhog.crawl.docs import learn_features
+
+        try:
+            d = learn_features()
+            console.print(f"[green]features[/] {d['features']} features, {d['relations']} relations")
+        except Exception as e:  # a failed docs pass never fails the crawl
+            console.print(f"[yellow]docs pass skipped — {e}[/]")
 
 
 @app.command()
 def suggest():
     """Infer untested scenarios from the graph (coverage gaps + asymmetries)."""
+    _need_llm()
+    _need_graph()
     from groundhog.graph.queries import suggestions
 
     for s in suggestions():
         console.print(f"[cyan]•[/] {s}")
+
+
+@app.command()
+def doctor():
+    """Check the environment: API key, app reachability, Neo4j, login flow."""
+    import httpx
+
+    from groundhog import config
+
+    failed = []
+
+    def check(label: str, passed: bool, hint: str) -> None:
+        if not passed:
+            failed.append(label)
+        console.print(f"  [{'green' if passed else 'red'}]{'✓' if passed else '✗'}[/] {label}"
+                      + ("" if passed else f" — {hint}"))
+
+    check("ANTHROPIC_API_KEY set", bool(config.ANTHROPIC_API_KEY), "add it to .env")
+    try:
+        httpx.get(config.BASE_URL, follow_redirects=True, timeout=5)
+        reachable = True
+    except Exception:
+        reachable = False
+    check(f"app reachable ({config.BASE_URL})", reachable, "check BASE_URL in .env")
+    try:
+        from groundhog.graph import store
+
+        store.driver()
+        graph = True
+    except Exception:
+        graph = False
+    check(f"Neo4j reachable ({config.NEO4J_URI})", graph,
+          "docker compose up -d (crawl/suggest need it; run/new degrade gracefully)")
+    check("login flow present (.auth/login.json)", (config.AUTH_DIR / "login.json").exists(),
+          "seed one (see README)")
+    raise typer.Exit(1 if failed else 0)
 
 
 if __name__ == "__main__":

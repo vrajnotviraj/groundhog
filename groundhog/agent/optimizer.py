@@ -10,9 +10,10 @@ from groundhog.llm import client
 
 
 class OptStep(BaseModel):
-    action: Literal["goto", "click", "fill", "fill_secret", "select", "press", "wait_for"]
+    action: Literal["goto", "click", "fill", "fill_secret", "select", "press", "wait_for", "drag"]
     selector: str | None = None
     fallback_selectors: list[str] = Field(default_factory=list)
+    to_selector: str | None = None
     value: str | None = None
     field: Literal["user", "pass"] | None = None
     description: str = ""

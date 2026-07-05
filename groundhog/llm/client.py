@@ -25,7 +25,11 @@ def _anthropic():
     if _client is None:
         import anthropic
 
-        _client = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY)
+        # SDK-native resilience: the client already retries connection errors,
+        # 429s and 5xx (incl. 529 overloaded) with exponential backoff on
+        # every call, honoring retry-after — raised from the default 2 to 5
+        # so a flaky call mid-authoring doesn't kill a long agent loop.
+        _client = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY, max_retries=5)
     return _client
 
 
@@ -54,24 +58,16 @@ def _system_block(system: str) -> list[dict]:
 
 def parse(user: str, output_model, system: str, model: str = FAST, max_tokens: int = 4096):
     """One structured-output call; the SDK validates against the Pydantic model.
-    One retry on transient failures."""
-    import anthropic
-
-    last = None
-    for _ in range(2):
-        try:
-            resp = _anthropic().messages.parse(
-                model=model,
-                max_tokens=max_tokens,
-                system=_system_block(system),
-                messages=[{"role": "user", "content": user}],
-                output_format=output_model,
-            )
-            _record(resp.usage)
-            return resp.parsed_output
-        except (anthropic.APIConnectionError, anthropic.RateLimitError, anthropic.InternalServerError) as e:
-            last = e
-    raise last
+    Transient failures are retried by the SDK client itself."""
+    resp = _anthropic().messages.parse(
+        model=model,
+        max_tokens=max_tokens,
+        system=_system_block(system),
+        messages=[{"role": "user", "content": user}],
+        output_format=output_model,
+    )
+    _record(resp.usage)
+    return resp.parsed_output
 
 
 def message(messages: list[dict], system: str, tools: list[dict] | None = None,

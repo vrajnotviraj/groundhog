@@ -59,6 +59,7 @@ steps store only the field name. Session cookies are cached under `.auth/`
 ## Use it
 
 ```sh
+uv run groundhog doctor                       # check API key, app URL, Neo4j, login flow
 uv run groundhog crawl --scope templates      # map your app into the knowledge graph
 uv run groundhog new "create an SMS template named {{name}} and verify it appears in the list" --var name=gh-seed
 uv run groundhog run create-an-sms-template --var name=gh-1   # static replay, zero AI
@@ -70,7 +71,9 @@ uv run groundhog list                         # saved cases, runs, heal counts
 Break a selector in `cases/*.json` and run again: the step heals and the JSON
 is rewritten. Every run writes a markdown + JSON report to `runs/` with
 per-step mode (`static` / `fallback` / `healed` / `failed`), drift flags, and
-exact token spend.
+exact token spend. Long runs fail safe: Ctrl-C during a crawl keeps every page
+already ingested, and a failed authoring run dumps its partial trace to `runs/`
+so the agent's work isn't lost.
 
 ## How a run works
 
