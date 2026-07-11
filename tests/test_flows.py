@@ -1,0 +1,122 @@
+from groundhog.cases import store
+from groundhog.cases.schema import Case, Flow, FlowCase, Step
+from groundhog.runner import flow as flow_runner
+from groundhog.runner.flow import case_vars, run_flow, shared_vars
+from groundhog.runner.replay import RunResult
+
+
+def _flow():
+    return Flow(
+        name="template-lifecycle",
+        intent="create a template, verify it in search, then delete it",
+        vars={"name": "gh-{{stamp}}"},
+        chain=["create-template", {"case": "search-templates", "vars": {"query": "{{name}}"}}],
+        cleanup=["delete-template"],
+    )
+
+
+def test_flow_chain_entries_coerce_from_plain_strings():
+    flow = _flow()
+    assert flow.chain[0] == FlowCase(case="create-template")
+    assert flow.chain[1] == FlowCase(case="search-templates", vars={"query": "{{name}}"})
+    assert flow.cleanup == [FlowCase(case="delete-template")]
+
+
+def test_flow_roundtrip(tmp_path, monkeypatch):
+    monkeypatch.setattr(store, "FLOWS_DIR", tmp_path)
+    flow = _flow()
+    store.save_flow(flow)
+    assert store.load_flow("template-lifecycle") == flow
+    assert store.list_flows() == [flow]
+
+
+def test_shared_vars_render_stamp_and_cli_wins():
+    flow = _flow()
+    merged = shared_vars(flow, {"extra": "1"})
+    assert merged["extra"] == "1"
+    # {{stamp}} renders to a per-run timestamp so created data never collides
+    assert merged["name"].startswith("gh-") and "{{" not in merged["name"]
+    # an explicit --var beats the flow default
+    assert shared_vars(flow, {"name": "gh-fixed"})["name"] == "gh-fixed"
+
+
+def test_case_vars_render_against_shared_and_win():
+    shared = {"name": "gh-1", "query": "unused"}
+    fc = FlowCase(case="search-templates", vars={"query": "{{name}}"})
+    assert case_vars(shared, fc) == {"name": "gh-1", "query": "gh-1"}
+    assert case_vars(shared, FlowCase(case="create-template")) == shared
+
+
+def _stub_cases(tmp_path, monkeypatch, names):
+    monkeypatch.setattr(store, "CASES_DIR", tmp_path)
+    for n in names:
+        store.save(Case(name=n, intent=n, steps=[Step(id="s1", action="click", selector="button")]))
+
+
+def _fake_run_case(outcomes: dict[str, bool], calls: list):
+    def fake(case, session, vars=None, heal=True):
+        calls.append((case.name, dict(vars or {})))
+        return RunResult(case=case.name, passed=outcomes[case.name])
+
+    return fake
+
+
+def test_run_flow_passes_and_shares_vars(tmp_path, monkeypatch):
+    _stub_cases(tmp_path, monkeypatch, ["create-template", "search-templates", "delete-template"])
+    calls = []
+    monkeypatch.setattr(flow_runner, "run_case", _fake_run_case(
+        {"create-template": True, "search-templates": True, "delete-template": True}, calls))
+    result = run_flow(_flow(), session=None, vars={"name": "gh-1"})
+    assert result.passed
+    assert [c.name for c in result.runs] == ["create-template", "search-templates", "delete-template"]
+    assert [(cr.stage, cr.result.passed) for cr in result.runs] == [
+        ("chain", True), ("chain", True), ("cleanup", True)]
+    # every case saw the shared name; search-templates derived its query from it
+    assert all(v["name"] == "gh-1" for _, v in calls)
+    assert calls[1][1]["query"] == "gh-1"
+
+
+def test_run_flow_skips_rest_of_chain_but_always_runs_cleanup(tmp_path, monkeypatch):
+    _stub_cases(tmp_path, monkeypatch, ["create-template", "search-templates", "delete-template"])
+    calls = []
+    monkeypatch.setattr(flow_runner, "run_case", _fake_run_case(
+        {"create-template": False, "search-templates": True, "delete-template": True}, calls))
+    result = run_flow(_flow(), session=None)
+    assert not result.passed
+    ran = [name for name, _ in calls]
+    assert ran == ["create-template", "delete-template"]  # search skipped, cleanup still ran
+    skipped = [cr for cr in result.runs if cr.result is None]
+    assert [cr.name for cr in skipped] == ["search-templates"]
+
+
+def test_run_flow_fails_when_cleanup_fails(tmp_path, monkeypatch):
+    _stub_cases(tmp_path, monkeypatch, ["create-template", "search-templates", "delete-template"])
+    monkeypatch.setattr(flow_runner, "run_case", _fake_run_case(
+        {"create-template": True, "search-templates": True, "delete-template": False}, []))
+    # leftover data is a real failure, not a footnote
+    assert not run_flow(_flow(), session=None).passed
+
+
+def test_compose_flow_rejects_unknown_cases(tmp_path, monkeypatch):
+    import pytest
+
+    from groundhog.agent import composer
+
+    _stub_cases(tmp_path, monkeypatch, ["create-template"])
+    draft = composer.FlowDraft(name="f", chain=["create-template", "no-such-case"], cleanup=[])
+    monkeypatch.setattr(composer.client, "parse", lambda **kw: draft)
+    with pytest.raises(ValueError, match="no-such-case"):
+        composer.compose_flow("create a template then vanish")
+
+
+def test_compose_flow_saves_resolved_flow(tmp_path, monkeypatch):
+    from groundhog.agent import composer
+
+    _stub_cases(tmp_path, monkeypatch, ["create-template", "delete-template"])
+    monkeypatch.setattr(store, "FLOWS_DIR", tmp_path)
+    draft = composer.FlowDraft(name="template-lifecycle", vars={"name": "gh-{{stamp}}"},
+                               chain=["create-template"], cleanup=["delete-template"])
+    monkeypatch.setattr(composer.client, "parse", lambda **kw: draft)
+    flow = composer.compose_flow("create a template, clean up after")
+    assert flow.intent == "create a template, clean up after"
+    assert store.load_flow("template-lifecycle") == flow

@@ -9,6 +9,8 @@ from rich.table import Table
 from groundhog.cases import store
 
 app = typer.Typer(no_args_is_help=True, add_completion=False)
+flow_app = typer.Typer(no_args_is_help=True, add_completion=False)
+app.add_typer(flow_app, name="flow", help="Chain saved cases: shared vars, always-run cleanup.")
 console = Console()
 
 
@@ -84,6 +86,53 @@ def list_():
 def show(name: str):
     """Print a case JSON."""
     console.print_json(json.dumps(store.load(name).model_dump()))
+
+
+@flow_app.command("run")
+def flow_run(name: str, var: list[str] = typer.Option([], help="shared template var, e.g. --var name=gh-test"),
+             no_heal: bool = typer.Option(False, help="fail instead of waking the healer"),
+             headed: bool = typer.Option(False, help="show the browser")):
+    """Replay a flow: chain cases in one session, then cleanup — always."""
+    from groundhog.browser.session import Session
+    from groundhog.llm import client
+    from groundhog.runner.flow import run_flow
+    from groundhog.runner.report import write_flow_report
+
+    flow = store.load_flow(name)
+    with Session(headless=not headed) as session:
+        session.ensure_logged_in()
+        result = run_flow(flow, session, vars=_parse_vars(var), heal=not no_heal)
+
+    report = write_flow_report(result, tokens=client.usage_snapshot())
+    console.print(f"\n[{'green' if result.passed else 'red'}]{'PASSED' if result.passed else 'FAILED'}[/] "
+                  f"in {result.total_ms}ms · {len(result.runs)} case(s) · report: {report}")
+    raise typer.Exit(0 if result.passed else 1)
+
+
+@flow_app.command("new")
+def flow_new(intent: str, name: str = typer.Option(None, help="flow name (kebab-case); derived from intent if omitted")):
+    """Compose a flow from English — picks from saved cases, never invents them."""
+    _need_llm()
+    from groundhog.agent.composer import compose_flow
+
+    try:
+        flow = compose_flow(intent, name=name)
+    except ValueError as e:
+        console.print(f"[red]{e}[/]")
+        raise typer.Exit(2)
+    chain = " → ".join(fc.case for fc in flow.chain)
+    cleanup = ", ".join(fc.case for fc in flow.cleanup) or "none"
+    console.print(f"[green]saved[/] flows/{flow.name}.json — chain: {chain} · cleanup: {cleanup} · vars: {flow.vars}")
+
+
+@flow_app.command("list")
+def flow_list():
+    """List saved flows."""
+    table = Table("name", "chain", "cleanup", "vars", "intent")
+    for f in store.list_flows():
+        table.add_row(f.name, " → ".join(fc.case for fc in f.chain),
+                      ", ".join(fc.case for fc in f.cleanup), json.dumps(f.vars), f.intent)
+    console.print(table)
 
 
 @app.command()
