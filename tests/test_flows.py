@@ -106,6 +106,36 @@ def test_run_flow_fails_when_cleanup_fails(tmp_path, monkeypatch):
     assert not run_flow(_flow(), session=None).passed
 
 
+def test_run_flow_handles_missing_chain_case_without_crashing(tmp_path, monkeypatch):
+    # create-template is never saved — a deleted/renamed case file on disk
+    _stub_cases(tmp_path, monkeypatch, ["search-templates", "delete-template"])
+    calls = []
+    monkeypatch.setattr(flow_runner, "run_case", _fake_run_case(
+        {"search-templates": True, "delete-template": True}, calls))
+    result = run_flow(_flow(), session=None)
+    assert not result.passed  # a load failure is a real failure
+    ran = [name for name, _ in calls]
+    # search-templates skipped (chain broke on the missing case); cleanup still ran
+    assert ran == ["delete-template"]
+    failed = next(cr for cr in result.runs if cr.name == "create-template")
+    assert failed.result is None and failed.error  # reported, not just silently skipped
+    skipped = next(cr for cr in result.runs if cr.name == "search-templates")
+    assert skipped.result is None and skipped.error is None  # plain skip, not a load failure
+
+
+def test_run_flow_reports_missing_cleanup_case_without_raising(tmp_path, monkeypatch):
+    # delete-template is never saved — cleanup must still be attempted, not raise
+    _stub_cases(tmp_path, monkeypatch, ["create-template", "search-templates"])
+    calls = []
+    monkeypatch.setattr(flow_runner, "run_case", _fake_run_case(
+        {"create-template": True, "search-templates": True}, calls))
+    result = run_flow(_flow(), session=None)
+    assert not result.passed  # a missing cleanup case is a real failure too
+    assert [name for name, _ in calls] == ["create-template", "search-templates"]
+    failed = next(cr for cr in result.runs if cr.name == "delete-template")
+    assert failed.stage == "cleanup" and failed.result is None and failed.error
+
+
 class _FakeSession:
     def __init__(self, headless=None):
         pass

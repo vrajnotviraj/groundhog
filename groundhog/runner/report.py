@@ -60,8 +60,12 @@ def write_flow_report(result: FlowResult, tokens: dict | None = None) -> str:
         f"{result.started_at} · {result.total_ms}ms · {len(result.runs)} case(s)",
     ]
     for cr in result.runs:
-        verdict = "SKIPPED" if cr.result is None else ("PASSED" if cr.result.passed else "FAILED")
+        # error without a result: the case never ran at all (e.g. file missing)
+        verdict = ("FAILED" if cr.error else "SKIPPED") if cr.result is None \
+            else ("PASSED" if cr.result.passed else "FAILED")
         lines += ["", f"## {cr.name} ({cr.stage}) — {verdict}"]
+        if cr.error:
+            lines += [f"could not run: {cr.error}"]
         if cr.result:
             lines += [f"{cr.result.total_ms}ms · {cr.result.healed} healed step(s)", ""]
             lines += _case_lines(cr.result, heading="###")

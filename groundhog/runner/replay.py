@@ -12,8 +12,7 @@ from datetime import datetime, timezone
 
 from rich.console import Console
 
-from groundhog import config
-from groundhog.browser.actions import Ctx, check_expects, goto_app, run_step, settle
+from groundhog.browser.actions import Ctx, check_expects, goto_app, resolve_path, run_step, settle
 from groundhog.browser.session import Session
 from groundhog.cases.schema import Assertion, Case, Expect, Heal
 from groundhog.cases.store import render, save
@@ -82,7 +81,7 @@ def run_case(case: Case, session: Session, vars: dict[str, str] | None = None,
     result = RunResult(case=case.name, started_at=datetime.now(timezone.utc).isoformat())
     clock = time.monotonic()
 
-    goto_app(page, f"{config.BASE_URL}{case.start_path.replace('/:ws', '/' + ctx.ws if ctx.ws else '')}")
+    goto_app(page, resolve_path(case.start_path, ctx))
 
     healed_steps: list[tuple[str, Heal]] = []
     aborted = False

@@ -26,7 +26,8 @@ console = Console()
 class CaseRun:
     name: str
     stage: str  # chain | cleanup
-    result: RunResult | None  # None: skipped because an earlier chain case failed
+    result: RunResult | None  # None: skipped, or the case itself failed to load
+    error: str | None = None  # set when the case file couldn't be loaded/run at all
 
 
 @dataclass
@@ -53,6 +54,16 @@ def case_vars(shared: dict[str, str], fc: FlowCase) -> dict[str, str]:
     return shared | {k: render(v, shared) for k, v in fc.vars.items()}
 
 
+def _load_case(fc: FlowCase):
+    """A deleted/renamed case file must not kill the whole flow — report it
+    as an honest failure for this case and let the chain/cleanup loop react,
+    same as any other failing case."""
+    try:
+        return store.load(fc.case), None
+    except Exception as e:
+        return None, str(e)
+
+
 def run_flow(flow: Flow, session: Session, vars: dict[str, str] | None = None,
              heal: bool = True) -> FlowResult:
     shared = shared_vars(flow, vars)
@@ -66,12 +77,23 @@ def run_flow(flow: Flow, session: Session, vars: dict[str, str] | None = None,
             result.runs.append(CaseRun(fc.case, "chain", None))
             continue
         console.print(f"\n[bold]{fc.case}[/]")
-        r = run_case(store.load(fc.case), session, vars=case_vars(shared, fc), heal=heal)
+        case, err = _load_case(fc)
+        if case is None:
+            console.print(f"  [red]✗[/] could not load case — {err}")
+            result.runs.append(CaseRun(fc.case, "chain", None, error=err))
+            chain_failed = True
+            continue
+        r = run_case(case, session, vars=case_vars(shared, fc), heal=heal)
         result.runs.append(CaseRun(fc.case, "chain", r))
         chain_failed = not r.passed
     for fc in flow.cleanup:
         console.print(f"\n[bold]{fc.case}[/] [dim](cleanup)[/]")
-        r = run_case(store.load(fc.case), session, vars=case_vars(shared, fc), heal=heal)
+        case, err = _load_case(fc)
+        if case is None:
+            console.print(f"  [red]✗[/] could not load case — {err}")
+            result.runs.append(CaseRun(fc.case, "cleanup", None, error=err))
+            continue
+        r = run_case(case, session, vars=case_vars(shared, fc), heal=heal)
         result.runs.append(CaseRun(fc.case, "cleanup", r))
 
     # Leftover data is a real failure: a cleanup miss fails the flow too.
