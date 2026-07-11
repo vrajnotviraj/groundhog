@@ -97,26 +97,92 @@ def test_run_flow_fails_when_cleanup_fails(tmp_path, monkeypatch):
     assert not run_flow(_flow(), session=None).passed
 
 
-def test_compose_flow_rejects_unknown_cases(tmp_path, monkeypatch):
+class _FakeSession:
+    def __init__(self, headless=None):
+        pass
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        pass
+
+    def ensure_logged_in(self):
+        pass
+
+
+def _composer(monkeypatch, draft, run_outcomes=None, authored=None):
+    from groundhog.agent import composer
+
+    monkeypatch.setattr(composer.client, "parse", lambda **kw: draft)
+    monkeypatch.setattr(composer, "Session", _FakeSession)
+    calls = []
+    monkeypatch.setattr(composer, "run_case", lambda case, session, vars=None, heal=True: (
+        calls.append(("replay", case.name, dict(vars or {}))),
+        RunResult(case=case.name, passed=(run_outcomes or {}).get(case.name, True)))[1])
+
+    def fake_author(intent, name=None, vars=None, session=None):
+        assert session is not None  # authoring must reuse the flow's session
+        calls.append(("author", name, dict(vars or {})))
+        if authored is not None:
+            authored.append(name)
+
+    import groundhog.agent.executor as executor
+    monkeypatch.setattr(executor, "author_case", fake_author)
+    return composer, calls
+
+
+def test_compose_flow_rejects_unknown_case_references(tmp_path, monkeypatch):
     import pytest
 
     from groundhog.agent import composer
 
     _stub_cases(tmp_path, monkeypatch, ["create-template"])
-    draft = composer.FlowDraft(name="f", chain=["create-template", "no-such-case"], cleanup=[])
+    draft = composer.FlowDraft(name="f", chain=[
+        composer.DraftCase(case="create-template"), composer.DraftCase(case="no-such-case")])
     monkeypatch.setattr(composer.client, "parse", lambda **kw: draft)
     with pytest.raises(ValueError, match="no-such-case"):
         composer.compose_flow("create a template then vanish")
 
 
-def test_compose_flow_saves_resolved_flow(tmp_path, monkeypatch):
-    from groundhog.agent import composer
+def test_compose_flow_replays_existing_and_authors_missing_in_order(tmp_path, monkeypatch):
+    from groundhog.agent.composer import DraftCase, FlowDraft
 
     _stub_cases(tmp_path, monkeypatch, ["create-template", "delete-template"])
     monkeypatch.setattr(store, "FLOWS_DIR", tmp_path)
-    draft = composer.FlowDraft(name="template-lifecycle", vars={"name": "gh-{{stamp}}"},
-                               chain=["create-template"], cleanup=["delete-template"])
-    monkeypatch.setattr(composer.client, "parse", lambda **kw: draft)
-    flow = composer.compose_flow("create a template, clean up after")
-    assert flow.intent == "create a template, clean up after"
-    assert store.load_flow("template-lifecycle") == flow
+    draft = FlowDraft(name="template-event", vars={"name": "gh-{{stamp}}"},
+                      chain=[DraftCase(case="create-template"),
+                             DraftCase(name="create-event", intent="create an event using template {{name}}")],
+                      cleanup=[DraftCase(name="delete-event", intent="delete the event named {{name}}"),
+                               DraftCase(case="delete-template")])
+    composer, calls = _composer(monkeypatch, draft)
+    flow = composer.compose_flow("create a template, an event on it, then clean up")
+    assert [(kind, name) for kind, name, _ in calls] == [
+        ("replay", "create-template"), ("author", "create-event"),
+        ("author", "delete-event"), ("replay", "delete-template")]
+    # every step of the pass saw the same concrete shared vars
+    assert len({tuple(sorted(v.items())) for _, _, v in calls}) == 1
+    assert "{{" not in calls[0][2]["name"]
+    assert [fc.case for fc in flow.chain] == ["create-template", "create-event"]
+    assert [fc.case for fc in flow.cleanup] == ["delete-event", "delete-template"]
+    assert store.load_flow("template-event") == flow
+
+
+def test_compose_flow_failure_runs_existing_cleanup_and_keeps_flow_unsaved(tmp_path, monkeypatch):
+    import pytest
+
+    from groundhog.agent.composer import DraftCase, FlowDraft
+
+    _stub_cases(tmp_path, monkeypatch, ["create-template", "delete-template"])
+    monkeypatch.setattr(store, "FLOWS_DIR", tmp_path)
+    draft = FlowDraft(name="template-event",
+                      chain=[DraftCase(case="create-template")],
+                      cleanup=[DraftCase(name="delete-event", intent="delete the event"),
+                               DraftCase(case="delete-template")])
+    composer, calls = _composer(monkeypatch, draft, run_outcomes={"create-template": False})
+    with pytest.raises(RuntimeError, match="flow not saved"):
+        composer.compose_flow("doomed")
+    # existing cleanup still replayed; the un-authored delete-event was not
+    assert [(kind, name) for kind, name, _ in calls] == [
+        ("replay", "create-template"), ("replay", "delete-template")]
+    assert not (tmp_path / "template-event.json").exists()

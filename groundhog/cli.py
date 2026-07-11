@@ -110,19 +110,17 @@ def flow_run(name: str, var: list[str] = typer.Option([], help="shared template 
 
 
 @flow_app.command("new")
-def flow_new(intent: str, name: str = typer.Option(None, help="flow name (kebab-case); derived from intent if omitted")):
-    """Compose a flow from English — picks from saved cases, never invents them."""
+def flow_new(intent: str, name: str = typer.Option(None, help="flow name (kebab-case); derived from intent if omitted"),
+             headed: bool = typer.Option(False, help="show the browser")):
+    """Compose a flow from English: reuse saved cases, author the missing ones
+    live in one pass, then save the flow — later runs are static."""
     _need_llm()
     from groundhog.agent.composer import compose_flow
 
-    try:
-        flow = compose_flow(intent, name=name)
-    except ValueError as e:
-        console.print(f"[red]{e}[/]")
-        raise typer.Exit(2)
+    flow = compose_flow(intent, name=name, headless=not headed)
     chain = " → ".join(fc.case for fc in flow.chain)
     cleanup = ", ".join(fc.case for fc in flow.cleanup) or "none"
-    console.print(f"[green]saved[/] flows/{flow.name}.json — chain: {chain} · cleanup: {cleanup} · vars: {flow.vars}")
+    console.print(f"\n[green]saved[/] flows/{flow.name}.json — chain: {chain} · cleanup: {cleanup} · vars: {flow.vars}")
 
 
 @flow_app.command("list")

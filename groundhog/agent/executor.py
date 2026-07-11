@@ -229,8 +229,34 @@ def _derive_name(intent: str) -> str:
     return "-".join(words[:5]) or "case"
 
 
+def _drive(session: Session, draft, live_intent: str, name: str) -> tuple[list[dict], dict]:
+    """Run the executor against a logged-in session; returns (trace, done)."""
+    ctx = Ctx(ws=session.ws)
+    page = session.page
+    goto_app(page, f"{config.BASE_URL}{draft.start_path.replace('/:ws', '/' + ctx.ws if ctx.ws else '')}")
+    # Long flows: scale the runaway guard with plan size — ~5 live actions per
+    # sub-goal absorbs retries and verification without letting a lost agent spin.
+    budget = max(config.EXECUTOR_MAX_ACTIONS, 5 * len(draft.steps))
+    trace: list[dict] = []
+    try:
+        trace, done = run_executor(page, ctx, live_intent, draft.steps, draft.notes,
+                                   max_actions=budget, trace=trace)
+    except Exception:
+        if trace:
+            console.print(f"[yellow]partial trace saved: {_dump_partial(name, trace)}[/]")
+        raise
+    if not trace:
+        raise RuntimeError("executor recorded no successful actions — nothing to save")
+    if done is None:
+        raise RuntimeError(f"executor hit the {budget}-action budget before finishing — "
+                           f"partial trace: {_dump_partial(name, trace)}")
+    return trace, done
+
+
 def author_case(intent: str, name: str | None = None, headless: bool = True,
-                vars: dict[str, str] | None = None) -> Case:
+                vars: dict[str, str] | None = None, session: Session | None = None) -> Case:
+    """Author one case agentically. Pass `session` to reuse a live logged-in
+    session (flow composing); otherwise one is opened for this case."""
     from datetime import datetime, timezone
 
     from groundhog.agent.planner import plan as make_plan
@@ -247,27 +273,12 @@ def author_case(intent: str, name: str | None = None, headless: bool = True,
     for s in draft.steps:
         console.print(f"  - {s}")
 
-    with Session(headless=headless) as session:
-        session.ensure_logged_in()
-        ctx = Ctx(ws=session.ws)
-        page = session.page
-        goto_app(page, f"{config.BASE_URL}{draft.start_path.replace('/:ws', '/' + ctx.ws if ctx.ws else '')}")
-        # Long flows: scale the runaway guard with plan size — ~5 live actions per
-        # sub-goal absorbs retries and verification without letting a lost agent spin.
-        budget = max(config.EXECUTOR_MAX_ACTIONS, 5 * len(draft.steps))
-        trace: list[dict] = []
-        try:
-            trace, done = run_executor(page, ctx, live_intent, draft.steps, draft.notes,
-                                       max_actions=budget, trace=trace)
-        except Exception:
-            if trace:
-                console.print(f"[yellow]partial trace saved: {_dump_partial(name, trace)}[/]")
-            raise
-        if not trace:
-            raise RuntimeError("executor recorded no successful actions — nothing to save")
-        if done is None:
-            raise RuntimeError(f"executor hit the {budget}-action budget before finishing — "
-                               f"partial trace: {_dump_partial(name, trace)}")
+    if session is not None:
+        trace, done = _drive(session, draft, live_intent, name)
+    else:
+        with Session(headless=headless) as owned:
+            owned.ensure_logged_in()
+            trace, done = _drive(owned, draft, live_intent, name)
 
     trace, done = _templatize(trace, vars), _templatize(done, vars)
     case = optimize(name, intent, trace, done)
