@@ -1,0 +1,24 @@
+{
+  "name": "template-lifecycle",
+  "intent": "create an SMS template named {{name}}, verify it appears when searching the templates list for it, then delete the template",
+  "vars": {
+    "name": "gh-{{stamp}}",
+    "query": "{{name}}"
+  },
+  "chain": [
+    {
+      "case": "create-sms-template",
+      "vars": {}
+    },
+    {
+      "case": "search-templates",
+      "vars": {}
+    }
+  ],
+  "cleanup": [
+    {
+      "case": "delete-sms-template",
+      "vars": {}
+    }
+  ]
+}
