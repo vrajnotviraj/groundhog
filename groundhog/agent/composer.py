@@ -23,7 +23,7 @@ console = Console()
 
 
 class DraftCase(BaseModel):
-    case: str = ""    # existing case name, verbatim from the catalog
+    reuse: str = ""   # existing case name, verbatim from the catalog
     name: str = ""    # kebab-case name for a case that must be authored
     intent: str = ""  # authoring intent (with {{vars}}) when no saved case fits
 
@@ -46,9 +46,13 @@ def _decompose(intent: str) -> FlowDraft:
     )
     known = {c.name for c in cases}
     for dc in draft.chain + draft.cleanup:
-        if dc.case and dc.case not in known:
-            raise ValueError(f"composer referenced a saved case that does not exist: {dc.case}")
-        if not dc.case and not dc.intent:
+        if dc.reuse and dc.reuse not in known:
+            if not dc.intent:
+                raise ValueError(f"composer referenced a saved case that does not exist: {dc.reuse}")
+            # the model named a new case under reuse but gave an intent too —
+            # recover by treating it as a case to author
+            dc.name, dc.reuse = dc.name or dc.reuse, ""
+        if not dc.reuse and not dc.intent:
             raise ValueError("composer produced a step with neither a saved case nor an intent")
     return draft
 
@@ -57,10 +61,10 @@ def _run_one(session: Session, dc: DraftCase, case_name: str, vars: dict[str, st
     """Replay an existing case or author a missing one; raises on failure."""
     from groundhog.agent.executor import author_case
 
-    if dc.case:
+    if dc.reuse:
         console.print(f"\n[bold]{case_name}[/] [dim](replaying saved case)[/]")
-        if not run_case(store.load(dc.case), session, vars=vars).passed:
-            raise RuntimeError(f"saved case {dc.case} failed during the composing pass")
+        if not run_case(store.load(dc.reuse), session, vars=vars).passed:
+            raise RuntimeError(f"saved case {dc.reuse} failed during the composing pass")
     else:
         console.print(f"\n[bold]{case_name}[/] [dim](authoring new case)[/]")
         author_case(dc.intent, name=case_name, vars=vars, session=session)
@@ -71,8 +75,8 @@ def compose_flow(intent: str, name: str | None = None, headless: bool = True) ->
 
     draft = _decompose(intent)
     flow = Flow(name=name or draft.name, intent=intent, vars=draft.vars,
-                chain=[dc.case or dc.name or _derive_name(dc.intent) for dc in draft.chain],
-                cleanup=[dc.case or dc.name or _derive_name(dc.intent) for dc in draft.cleanup])
+                chain=[dc.reuse or dc.name or _derive_name(dc.intent) for dc in draft.chain],
+                cleanup=[dc.reuse or dc.name or _derive_name(dc.intent) for dc in draft.cleanup])
     chain = list(zip(draft.chain, [fc.case for fc in flow.chain]))
     cleanup = list(zip(draft.cleanup, [fc.case for fc in flow.cleanup]))
     vars = shared_vars(flow)  # concrete values for the pass; cases stay parameterized
@@ -87,10 +91,10 @@ def compose_flow(intent: str, name: str | None = None, headless: bool = True) ->
             # that already exist so data isn't stranded, then report. Cases
             # authored before the failure stay saved — only the flow isn't.
             for dc, case_name in cleanup:
-                if dc.case:
+                if dc.reuse:
                     console.print(f"\n[bold]{case_name}[/] [dim](cleanup after failure)[/]")
                     try:
-                        run_case(store.load(dc.case), session, vars=vars)
+                        run_case(store.load(dc.reuse), session, vars=vars)
                     except Exception:
                         pass
             raise RuntimeError(f"{e} — flow not saved (already-authored cases were kept)")

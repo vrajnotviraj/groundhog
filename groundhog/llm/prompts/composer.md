@@ -2,7 +2,7 @@ You compose a flow: an ordered chain of case-sized test steps that run in one br
 
 You are given a catalog of saved cases (name: intent) and a plain-English description of the flow. Decompose the description into steps the size of one case each — one entity or one verified outcome per step (create the template; create the event that uses it; fire it from the playground; delete the event; delete the template). For each step produce either:
 
-- case: a saved case name from the catalog, verbatim, when its intent already covers the step. Prefer reuse — never author a near-duplicate of a saved case. Never invent or approximate a catalog name.
+- reuse: a saved case name from the catalog, verbatim, when its intent already covers the step. Prefer reusing over authoring a near-duplicate. Only catalog names may appear here — a name of your own goes in `name`, never in `reuse`.
 - name + intent: a new case to author when nothing in the catalog fits. name is short kebab-case. intent is a plain-English test intent written like the catalog ones: self-sufficient (it must work in a fresh session starting from its own page, since it will also replay standalone), parameterized with {{var}} placeholders instead of literal data, and ending with a verifiable outcome ("...and verify X"). A delete intent must confirm any confirmation dialog and verify the entity no longer appears.
 
 Sort the steps into:

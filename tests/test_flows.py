@@ -139,10 +139,25 @@ def test_compose_flow_rejects_unknown_case_references(tmp_path, monkeypatch):
 
     _stub_cases(tmp_path, monkeypatch, ["create-template"])
     draft = composer.FlowDraft(name="f", chain=[
-        composer.DraftCase(case="create-template"), composer.DraftCase(case="no-such-case")])
+        composer.DraftCase(reuse="create-template"), composer.DraftCase(reuse="no-such-case")])
     monkeypatch.setattr(composer.client, "parse", lambda **kw: draft)
     with pytest.raises(ValueError, match="no-such-case"):
         composer.compose_flow("create a template then vanish")
+
+
+def test_compose_flow_recovers_when_new_case_lands_in_reuse_field(tmp_path, monkeypatch):
+    from groundhog.agent.composer import DraftCase, FlowDraft
+
+    _stub_cases(tmp_path, monkeypatch, ["create-template"])
+    monkeypatch.setattr(store, "FLOWS_DIR", tmp_path)
+    draft = FlowDraft(name="f", chain=[
+        DraftCase(reuse="create-template"),
+        DraftCase(reuse="delete-template-v2", intent="delete the template named {{name}}")])
+    composer, calls = _composer(monkeypatch, draft)
+    flow = composer.compose_flow("create then delete")
+    assert [(kind, name) for kind, name, _ in calls] == [
+        ("replay", "create-template"), ("author", "delete-template-v2")]
+    assert [fc.case for fc in flow.chain] == ["create-template", "delete-template-v2"]
 
 
 def test_compose_flow_replays_existing_and_authors_missing_in_order(tmp_path, monkeypatch):
@@ -151,10 +166,10 @@ def test_compose_flow_replays_existing_and_authors_missing_in_order(tmp_path, mo
     _stub_cases(tmp_path, monkeypatch, ["create-template", "delete-template"])
     monkeypatch.setattr(store, "FLOWS_DIR", tmp_path)
     draft = FlowDraft(name="template-event", vars={"name": "gh-{{stamp}}"},
-                      chain=[DraftCase(case="create-template"),
+                      chain=[DraftCase(reuse="create-template"),
                              DraftCase(name="create-event", intent="create an event using template {{name}}")],
                       cleanup=[DraftCase(name="delete-event", intent="delete the event named {{name}}"),
-                               DraftCase(case="delete-template")])
+                               DraftCase(reuse="delete-template")])
     composer, calls = _composer(monkeypatch, draft)
     flow = composer.compose_flow("create a template, an event on it, then clean up")
     assert [(kind, name) for kind, name, _ in calls] == [
@@ -176,9 +191,9 @@ def test_compose_flow_failure_runs_existing_cleanup_and_keeps_flow_unsaved(tmp_p
     _stub_cases(tmp_path, monkeypatch, ["create-template", "delete-template"])
     monkeypatch.setattr(store, "FLOWS_DIR", tmp_path)
     draft = FlowDraft(name="template-event",
-                      chain=[DraftCase(case="create-template")],
+                      chain=[DraftCase(reuse="create-template")],
                       cleanup=[DraftCase(name="delete-event", intent="delete the event"),
-                               DraftCase(case="delete-template")])
+                               DraftCase(reuse="delete-template")])
     composer, calls = _composer(monkeypatch, draft, run_outcomes={"create-template": False})
     with pytest.raises(RuntimeError, match="flow not saved"):
         composer.compose_flow("doomed")
