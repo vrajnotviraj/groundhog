@@ -8,18 +8,36 @@
 
 Groundhog is end-to-end testing for SaaS apps. That's it.
 
-Today you have two bad options for testing a web app. Write Playwright scripts
-by hand: slow to write, and they break every time the UI changes. Or let an AI
-agent drive the browser on every run: resilient, but slow, and you pay tokens
-for every single test, every time.
+## Why this exists
 
-Groundhog does the smart part once. An AI agent turns your plain-English intent
-into a JSON test case. Every run after that is a static Playwright replay: fast,
-deterministic, zero AI calls. When the UI drifts and a step breaks, the agent
-wakes up, fixes that one step, verifies the fix, and writes it back into the
-JSON. The next run is fully static again.
+An AI agent can drive a browser today. Every demo proves that. What none of
+them fix is memory. An agent opening your app for the thousandth time still
+behaves like it's the first: same blind clicking around the DOM, same tokens
+spent finding the same button, every single run.
 
-Like the movie: it wakes up, sees the same day, and gets a little better at it.
+The real question behind groundhog: how do you give an AI enough context
+about your app that it stops re-learning it every run?
+
+The answer is to crawl the app once. A crawler walks it like a careful user:
+it clicks links, reads pages, and refuses to touch anything that mutates or
+deletes data. What it sees goes into a knowledge graph in Neo4j. That graph
+is the context. It's what lets you write `create an SMS template` instead of
+walking the agent to the exact button, form, and field by hand.
+
+Once the agent has that map, you write tests in plain English. `groundhog new
+"create an SMS template named {{name}} and verify it appears in the list"`
+drives your real app once, then saves what it did as a JSON case. Every run
+after that replays the JSON. No AI, no map, no guessing, just a deterministic
+script.
+
+A single case proves one thing works. Real objectives rarely live on one
+page. Wiring a route to a template to an event, then confirming the event
+actually fires, is three or four cases deep. Flows chain saved cases into
+that longer story, in order, sharing one login and one set of data. That's
+the objective a lone case can't reach on its own.
+
+Like the movie: it wakes up, sees the same day, and gets a little better at
+it.
 
 ## What you get
 
@@ -29,6 +47,32 @@ Like the movie: it wakes up, sees the same day, and gets a little better at it.
 - **Your app gets mapped.** A crawler builds a knowledge graph of your app in Neo4j. Every run enriches it. `groundhog suggest` tells you what you haven't tested yet.
 - **Long flows work.** "Create a route, then a template, then an event that wires them together" authors in one pass and replays statically.
 - **Cases chain into flows.** `groundhog flow new "create a template, then an event on it, then clean up"` reuses saved cases, authors the missing ones live, and pairs every create with a delete that runs even when the chain fails.
+
+## Variables
+
+Every case has its own local vars. `{{name}}` in an intent becomes `--var
+name=gh-1` at run time, substituted into values, assertions, and selectors.
+Same case, different data, every run.
+
+A flow needs more than that. When step one creates a template and step three
+searches for it, both steps need the same name. That's what a flow's `vars`
+block is: one shared namespace, set once at the flow level, visible to every
+case in the chain.
+
+A case inside the chain can still override a shared var just for itself:
+
+```json
+{"case": "search-templates", "vars": {"query": "{{name}}"}}
+```
+
+That override wins locally without touching what the rest of the chain sees.
+And `{{stamp}}` (a per-run timestamp) gets baked into shared defaults like
+`gh-{{stamp}}`, so two runs of the same flow never collide over leftover
+data.
+
+Local vars make one case reusable. Shared vars make a chain of cases behave
+like one continuous story instead of four cases that happen to run back to
+back.
 
 ## Quick start (~5 minutes)
 
@@ -61,10 +105,10 @@ steps store only the field name. Session cookies are cached under `.auth/`
 
 `uv run` re-syncs dependencies on every call, which is why the commands below
 use it. For a real `groundhog` command on your `PATH` instead, install it as
-a uv tool once: `uv tool install --editable .` — editable means it keeps
-running your local code, not a frozen copy. (A plain shell alias to `uv run
+a uv tool once: `uv tool install --editable .` (editable means it keeps
+running your local code, not a frozen copy). A plain shell alias to `uv run
 groundhog` is a lighter option, but it's just a shorthand, not a real
-install — it still re-syncs on every call.)
+install: it still re-syncs on every call.
 
 ```sh
 uv run groundhog doctor                       # check API key, app URL, Neo4j, login flow
@@ -137,11 +181,9 @@ performs them one at a time against your live app, verifying as it goes. An
 optimizer then distills the executed trace into the minimal replayable case.
 It keeps only selectors that actually ran, never invented ones.
 
-Test data is parameterized: `{{name}}` in your intent becomes a `--var` at run
-time, substituted into values, assertions, and selectors, so a test can open
-the entity it just created, but never keys on hard-coded data. The agent types
-real values while authoring (validated form fields reject braces); the saved
-case is re-parameterized automatically.
+The agent types real values while authoring (validated form fields reject
+braces); the saved case is re-parameterized back into `{{var}}` form
+automatically, ready for the next run.
 
 ## Configuration
 
@@ -163,7 +205,7 @@ groundhog/
   crawl/                 budgeted BFS crawler · LLM page observation
   cases/ runner/         case schema+store · replay orchestration · reports
 cases/                   saved test cases (JSON, edit freely)
-flows/                   saved flows — chains of cases (JSON, edit freely)
+flows/                   saved flows: chains of cases (JSON, edit freely)
 runs/                    run reports
 ```
 
