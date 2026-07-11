@@ -49,6 +49,10 @@ TOOLS = [
     _tool("press", "Press a key on an element (e.g. Enter).",
           {"selector": _SEL, "value": {"type": "string", "description": "key, e.g. Enter"}, "description": _DESC},
           ["selector", "value", "description"]),
+    _tool("hover", "Hover an element to reveal controls that only appear on hover "
+          "(row/card action buttons). Use when a control resolves but is reported not visible.",
+          {"selector": _SEL, "fallback_selectors": _FALLBACKS, "description": _DESC},
+          ["selector", "description"]),
     _tool("drag", "Drag one element onto another: a palette item onto the canvas, or a "
           "node's source handle onto another node's target handle to connect them.",
           {"selector": _SEL,

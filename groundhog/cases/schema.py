@@ -4,7 +4,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
 
-Action = Literal["goto", "click", "fill", "fill_secret", "select", "press", "wait_for", "drag"]
+Action = Literal["goto", "click", "fill", "fill_secret", "select", "press", "wait_for", "drag", "hover"]
 
 
 class Expect(BaseModel):
