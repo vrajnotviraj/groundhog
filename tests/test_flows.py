@@ -40,6 +40,15 @@ def test_shared_vars_render_stamp_and_cli_wins():
     assert shared_vars(flow, {"name": "gh-fixed"})["name"] == "gh-fixed"
 
 
+def test_shared_vars_resolve_references_between_vars():
+    flow = Flow(name="f", vars={"name": "gh-{{stamp}}", "query": "{{name}}"},
+                chain=["create-template"])
+    merged = shared_vars(flow)
+    assert merged["query"] == merged["name"] and merged["name"].startswith("gh-")
+    # a --var override propagates into vars that reference it
+    assert shared_vars(flow, {"name": "gh-x"})["query"] == "gh-x"
+
+
 def test_case_vars_render_against_shared_and_win():
     shared = {"name": "gh-1", "query": "unused"}
     fc = FlowCase(case="search-templates", vars={"query": "{{name}}"})
@@ -145,12 +154,34 @@ def test_compose_flow_rejects_unknown_case_references(tmp_path, monkeypatch):
         composer.compose_flow("create a template then vanish")
 
 
+def test_decompose_converts_verbatim_duplicate_intents_to_reuse_and_requires_vars(tmp_path, monkeypatch):
+    import pytest
+
+    from groundhog.agent import composer
+
+    monkeypatch.setattr(store, "CASES_DIR", tmp_path)
+    store.save(Case(name="create-template", intent="create a template named {{name}}",
+                    steps=[Step(id="s1", action="click", selector="button")]))
+    draft = composer.FlowDraft(
+        name="f", vars={"name": "gh-{{stamp}}"},
+        chain=[composer.DraftCase(name="create-template-2", intent="create a template named {{name}}")])
+    monkeypatch.setattr(composer.client, "parse", lambda **kw: draft)
+    out = composer._decompose("create a template")
+    assert out.chain[0].reuse == "create-template"  # duplicate intent folded into reuse
+
+    bare = composer.FlowDraft(name="f", chain=[
+        composer.DraftCase(name="c", intent="delete the template named {{name}}")])
+    monkeypatch.setattr(composer.client, "parse", lambda **kw: bare)
+    with pytest.raises(ValueError, match="without defaults.*name"):
+        composer._decompose("delete a template")
+
+
 def test_compose_flow_recovers_when_new_case_lands_in_reuse_field(tmp_path, monkeypatch):
     from groundhog.agent.composer import DraftCase, FlowDraft
 
     _stub_cases(tmp_path, monkeypatch, ["create-template"])
     monkeypatch.setattr(store, "FLOWS_DIR", tmp_path)
-    draft = FlowDraft(name="f", chain=[
+    draft = FlowDraft(name="f", vars={"name": "gh-{{stamp}}"}, chain=[
         DraftCase(reuse="create-template"),
         DraftCase(reuse="delete-template-v2", intent="delete the template named {{name}}")])
     composer, calls = _composer(monkeypatch, draft)

@@ -15,6 +15,7 @@ from rich.console import Console
 from groundhog.browser.session import Session
 from groundhog.cases import store
 from groundhog.cases.schema import Flow
+from groundhog.cases.store import VAR
 from groundhog.llm import client
 from groundhog.runner.flow import shared_vars
 from groundhog.runner.replay import run_case
@@ -23,16 +24,26 @@ console = Console()
 
 
 class DraftCase(BaseModel):
-    reuse: str = ""   # existing case name, verbatim from the catalog
-    name: str = ""    # kebab-case name for a case that must be authored
-    intent: str = ""  # authoring intent (with {{vars}}) when no saved case fits
+    """One step: either reuse a saved case (`reuse` alone) or author a new one
+    (`name` + `intent`). Field descriptions guide the model — comments don't."""
+
+    reuse: str = Field("", description="saved case name from the catalog, verbatim; "
+                                       "empty when this step needs a new case")
+    name: str = Field("", description="short kebab-case name for the new case to author; "
+                                      "empty when reusing a saved case")
+    intent: str = Field("", description="plain-English test intent for the new case, "
+                                        "with {{var}} placeholders; required whenever reuse is empty")
 
 
 class FlowDraft(BaseModel):
-    name: str
-    vars: dict[str, str] = Field(default_factory=dict)
-    chain: list[DraftCase]
-    cleanup: list[DraftCase] = Field(default_factory=list)
+    name: str = Field(description="short kebab-case name for the flow")
+    vars: dict[str, str] = Field(default_factory=dict,
+                                 description="shared {{var}} defaults for every case in the flow, "
+                                             "e.g. {\"name\": \"gh-{{stamp}}\"}")
+    chain: list[DraftCase] = Field(description="the steps in order")
+    cleanup: list[DraftCase] = Field(default_factory=list,
+                                     description="steps that undo what the chain created; "
+                                                 "run even when the chain fails")
 
 
 def _decompose(intent: str) -> FlowDraft:
@@ -45,6 +56,8 @@ def _decompose(intent: str) -> FlowDraft:
         model=client.SMART,
     )
     known = {c.name for c in cases}
+    by_intent = {c.intent: c.name for c in cases}
+    needed: set[str] = set()
     for dc in draft.chain + draft.cleanup:
         if dc.reuse and dc.reuse not in known:
             if not dc.intent:
@@ -52,8 +65,17 @@ def _decompose(intent: str) -> FlowDraft:
             # the model named a new case under reuse but gave an intent too —
             # recover by treating it as a case to author
             dc.name, dc.reuse = dc.name or dc.reuse, ""
+        if not dc.reuse and dc.intent in by_intent:
+            # a "new" case with a catalog intent verbatim is a reuse in disguise
+            dc.reuse, dc.name, dc.intent = by_intent[dc.intent], "", ""
         if not dc.reuse and not dc.intent:
             raise ValueError("composer produced a step with neither a saved case nor an intent")
+        intent_text = next(c.intent for c in cases if c.name == dc.reuse) if dc.reuse else dc.intent
+        needed |= set(VAR.findall(intent_text))
+    missing = needed - {"stamp"} - draft.vars.keys()
+    if missing:
+        raise ValueError(f"composer left {{{{var}}}}s without defaults: {sorted(missing)} — "
+                         "rerun `groundhog flow new`")
     return draft
 
 

@@ -40,9 +40,12 @@ class FlowResult:
 
 def shared_vars(flow: Flow, cli_vars: dict[str, str] | None = None) -> dict[str, str]:
     """Flow var defaults (with {{stamp}} rendered to a per-run timestamp for
-    collision-free data), overridden by explicit --var values."""
+    collision-free data), overridden by explicit --var values. A second render
+    pass lets one var reference another — "query": "{{name}}" wires the search
+    case to the template the chain created."""
     stamp = {"stamp": datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")}
-    return {k: render(v, stamp) for k, v in flow.vars.items()} | (cli_vars or {})
+    merged = {k: render(v, stamp) for k, v in flow.vars.items()} | (cli_vars or {})
+    return {k: render(v, merged) for k, v in merged.items()}
 
 
 def case_vars(shared: dict[str, str], fc: FlowCase) -> dict[str, str]:
