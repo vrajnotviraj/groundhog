@@ -2,9 +2,9 @@
 
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
-Action = Literal["goto", "click", "fill", "fill_secret", "select", "press", "wait_for", "drag"]
+Action = Literal["goto", "click", "fill", "fill_secret", "select", "press", "wait_for", "drag", "hover"]
 
 
 class Expect(BaseModel):
@@ -61,3 +61,34 @@ class Case(BaseModel):
     steps: list[Step]
     assertions: list[Assertion] = Field(default_factory=list)
     meta: Meta = Field(default_factory=Meta)
+
+
+class FlowCase(BaseModel):
+    """One saved case inside a flow. In flow JSON a bare string is enough;
+    the object form adds per-case var overrides."""
+
+    case: str
+    # Rendered against the flow's shared vars, so a case can derive its value
+    # from a shared one (e.g. query: "{{name}}").
+    vars: dict[str, str] = Field(default_factory=dict)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _from_name(cls, value):
+        return {"case": value} if isinstance(value, str) else value
+
+
+class Flow(BaseModel):
+    """An ordered chain of saved cases run in one browser session.
+
+    vars are shared by every case — the glue that lets an event case pick the
+    template a previous case created. cleanup cases run even when the chain
+    fails, so a create is always paired with its delete."""
+
+    name: str
+    intent: str = ""
+    # Values may use {{stamp}} (a per-run UTC timestamp) so each run creates
+    # uniquely-named data instead of colliding with leftovers.
+    vars: dict[str, str] = Field(default_factory=dict)
+    chain: list[FlowCase]
+    cleanup: list[FlowCase] = Field(default_factory=list)

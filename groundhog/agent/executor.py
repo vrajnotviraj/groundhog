@@ -3,6 +3,7 @@ recording every executed action with a durable selector — plus the authoring
 orchestration (planner → executor → optimizer → save)."""
 
 import re
+from typing import get_args
 
 from rich.console import Console
 from rich.markup import escape
@@ -12,7 +13,7 @@ from groundhog.browser.actions import Ctx, goto_app, on_picker, perform, recover
 from groundhog.browser.session import Session
 from groundhog.browser.snapshot import fingerprint, snapshot
 from groundhog.browser.selectors import dedupe_ranked, embeds_value, is_weak
-from groundhog.cases.schema import Case, Step
+from groundhog.cases.schema import Action, Case, Step
 from groundhog.cases.store import save
 from groundhog.llm import client
 
@@ -48,6 +49,10 @@ TOOLS = [
     _tool("press", "Press a key on an element (e.g. Enter).",
           {"selector": _SEL, "value": {"type": "string", "description": "key, e.g. Enter"}, "description": _DESC},
           ["selector", "value", "description"]),
+    _tool("hover", "Hover an element to reveal controls that only appear on hover "
+          "(row/card action buttons). Use when a control resolves but is reported not visible.",
+          {"selector": _SEL, "fallback_selectors": _FALLBACKS, "description": _DESC},
+          ["selector", "description"]),
     _tool("drag", "Drag one element onto another: a palette item onto the canvas, or a "
           "node's source handle onto another node's target handle to connect them.",
           {"selector": _SEL,
@@ -157,6 +162,11 @@ def _execute(page, ctx: Ctx, action: str, inp: dict, trace: list[dict],
 
         return {"ok": True, "text": read_docs_page(inp.get("url", ""))}
 
+    # A hallucinated tool name must bounce back into the loop as a tool error,
+    # not crash the run — authoring is the expensive part of the product.
+    if action not in get_args(Action):
+        return {"ok": False, "text": f"error: unknown tool {action!r} — use only the provided tools"}
+
     # Deterministic gates before touching the browser — a bad selector otherwise
     # costs a full step timeout per attempt.
     key = (action, inp.get("selector") or "")
@@ -223,8 +233,34 @@ def _derive_name(intent: str) -> str:
     return "-".join(words[:5]) or "case"
 
 
+def _drive(session: Session, draft, live_intent: str, name: str) -> tuple[list[dict], dict]:
+    """Run the executor against a logged-in session; returns (trace, done)."""
+    ctx = Ctx(ws=session.ws)
+    page = session.page
+    goto_app(page, f"{config.BASE_URL}{draft.start_path.replace('/:ws', '/' + ctx.ws if ctx.ws else '')}")
+    # Long flows: scale the runaway guard with plan size — ~5 live actions per
+    # sub-goal absorbs retries and verification without letting a lost agent spin.
+    budget = max(config.EXECUTOR_MAX_ACTIONS, 5 * len(draft.steps))
+    trace: list[dict] = []
+    try:
+        trace, done = run_executor(page, ctx, live_intent, draft.steps, draft.notes,
+                                   max_actions=budget, trace=trace)
+    except Exception:
+        if trace:
+            console.print(f"[yellow]partial trace saved: {_dump_partial(name, trace)}[/]")
+        raise
+    if not trace:
+        raise RuntimeError("executor recorded no successful actions — nothing to save")
+    if done is None:
+        raise RuntimeError(f"executor hit the {budget}-action budget before finishing — "
+                           f"partial trace: {_dump_partial(name, trace)}")
+    return trace, done
+
+
 def author_case(intent: str, name: str | None = None, headless: bool = True,
-                vars: dict[str, str] | None = None) -> Case:
+                vars: dict[str, str] | None = None, session: Session | None = None) -> Case:
+    """Author one case agentically. Pass `session` to reuse a live logged-in
+    session (flow composing); otherwise one is opened for this case."""
     from datetime import datetime, timezone
 
     from groundhog.agent.planner import plan as make_plan
@@ -241,27 +277,12 @@ def author_case(intent: str, name: str | None = None, headless: bool = True,
     for s in draft.steps:
         console.print(f"  - {s}")
 
-    with Session(headless=headless) as session:
-        session.ensure_logged_in()
-        ctx = Ctx(ws=session.ws)
-        page = session.page
-        goto_app(page, f"{config.BASE_URL}{draft.start_path.replace('/:ws', '/' + ctx.ws if ctx.ws else '')}")
-        # Long flows: scale the runaway guard with plan size — ~5 live actions per
-        # sub-goal absorbs retries and verification without letting a lost agent spin.
-        budget = max(config.EXECUTOR_MAX_ACTIONS, 5 * len(draft.steps))
-        trace: list[dict] = []
-        try:
-            trace, done = run_executor(page, ctx, live_intent, draft.steps, draft.notes,
-                                       max_actions=budget, trace=trace)
-        except Exception:
-            if trace:
-                console.print(f"[yellow]partial trace saved: {_dump_partial(name, trace)}[/]")
-            raise
-        if not trace:
-            raise RuntimeError("executor recorded no successful actions — nothing to save")
-        if done is None:
-            raise RuntimeError(f"executor hit the {budget}-action budget before finishing — "
-                               f"partial trace: {_dump_partial(name, trace)}")
+    if session is not None:
+        trace, done = _drive(session, draft, live_intent, name)
+    else:
+        with Session(headless=headless) as owned:
+            owned.ensure_logged_in()
+            trace, done = _drive(owned, draft, live_intent, name)
 
     trace, done = _templatize(trace, vars), _templatize(done, vars)
     case = optimize(name, intent, trace, done)

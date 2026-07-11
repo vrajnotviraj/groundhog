@@ -1,10 +1,10 @@
-"""Load/save cases as pretty JSON in cases/, plus {{var}} template rendering."""
+"""Load/save cases (cases/) and flows (flows/) as pretty JSON, plus {{var}} rendering."""
 
 import json
 import re
 
-from groundhog.config import CASES_DIR
-from groundhog.cases.schema import Case
+from groundhog.config import CASES_DIR, FLOWS_DIR
+from groundhog.cases.schema import Case, Flow
 
 VAR = re.compile(r"\{\{\s*(\w+)\s*\}\}")
 
@@ -30,3 +30,16 @@ def save(case: Case) -> None:
 
 def list_cases() -> list[Case]:
     return [Case.model_validate_json(p.read_text()) for p in sorted(CASES_DIR.glob("*.json"))]
+
+
+def load_flow(name: str) -> Flow:
+    return Flow.model_validate_json((FLOWS_DIR / f"{name}.json").read_text())
+
+
+def save_flow(flow: Flow) -> None:
+    FLOWS_DIR.mkdir(exist_ok=True)
+    (FLOWS_DIR / f"{flow.name}.json").write_text(flow.model_dump_json(indent=2) + "\n")
+
+
+def list_flows() -> list[Flow]:
+    return [Flow.model_validate_json(p.read_text()) for p in sorted(FLOWS_DIR.glob("*.json"))]

@@ -40,5 +40,6 @@ DOCS_URL = os.environ.get("DOCS_URL", "https://docs.example.com")
 
 ROOT = Path.cwd()
 CASES_DIR = ROOT / "cases"
+FLOWS_DIR = ROOT / "flows"
 RUNS_DIR = ROOT / "runs"
 AUTH_DIR = ROOT / ".auth"

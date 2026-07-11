@@ -13,6 +13,7 @@ The flow file lives next to the session, not in cases/, so it never shows up in
 
 import json
 import re
+import time
 
 from playwright.sync_api import Page, sync_playwright
 
@@ -68,12 +69,21 @@ class Session:
 
     def _select_workspace(self) -> None:
         """A cached session can land on the /workspaces picker rather than a
-        workspace home — pick the configured one so `ws` is always known."""
-        if WS_ID.match(self.page.url.removeprefix(config.BASE_URL)):
-            return
-        if "/workspaces" in self.page.url and config.LOGIN_WORKSPACE:
-            self.page.get_by_role("link", name=config.LOGIN_WORKSPACE).first.click()
-            settle(self.page)
+        workspace home — pick the configured one so `ws` is always known.
+        The SPA can also boot at `/` and only redirect a beat later, so wait
+        (bounded) for it to land on a workspace before capturing state."""
+        clicked = False
+        deadline = time.monotonic() + config.STEP_TIMEOUT_MS / 1000
+        while time.monotonic() < deadline:
+            path = self.page.url.removeprefix(config.BASE_URL)
+            if WS_ID.match(path):
+                return
+            if "/workspaces" in path and config.LOGIN_WORKSPACE and not clicked:
+                self.page.get_by_role("link", name=config.LOGIN_WORKSPACE).first.click()
+                settle(self.page)
+                clicked = True
+            else:
+                self.page.wait_for_timeout(250)
 
     def _dismiss_consent(self) -> None:
         """The cookie banner overlays page content and blocks clicks; consent is

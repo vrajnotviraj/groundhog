@@ -58,3 +58,13 @@ def test_elide_is_idempotent():
     once = [str(m["content"]) for m in messages]
     _elide_stale_states(messages, keep=1)
     assert [str(m["content"]) for m in messages] == once
+
+
+def test_execute_rejects_hallucinated_tool_names():
+    from groundhog.agent.executor import _execute
+    from groundhog.browser.actions import Ctx
+
+    # page=None: an unknown tool must bounce before the browser is touched
+    result = _execute(None, Ctx(), "triple_click", {"selector": "x"}, [], {})
+    assert not result["ok"]
+    assert "unknown tool 'triple_click'" in result["text"]

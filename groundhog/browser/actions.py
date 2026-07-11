@@ -112,6 +112,9 @@ def perform(page: Page, step: Step, ctx: Ctx, selector: str | None = None) -> No
         loc.press(value or "Enter", timeout=timeout)
     elif step.action == "wait_for":
         loc.wait_for(state="visible", timeout=timeout)
+    elif step.action == "hover":
+        # reveals hover-only controls (e.g. row action buttons) for the next step
+        loc.hover(timeout=timeout)
     elif step.action == "drag":
         # drag_to covers HTML5-dnd palettes but no-ops silently on d3-drag
         # handles (it does not throw) — an unchanged fingerprint after settle

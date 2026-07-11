@@ -8,6 +8,7 @@
       "action": "click",
       "selector": "button:has-text(\"Create\")",
       "fallback_selectors": [],
+      "to_selector": null,
       "value": null,
       "field": null,
       "description": "Click the Create button to start creating a new template",
@@ -23,6 +24,7 @@
       "action": "fill",
       "selector": "input[placeholder=\"Enter Name\"]",
       "fallback_selectors": [],
+      "to_selector": null,
       "value": "{{name}}",
       "field": null,
       "description": "Enter the template name",
@@ -37,6 +39,7 @@
       "fallback_selectors": [
         "button:has-text(\"Subm1tted\")"
       ],
+      "to_selector": null,
       "value": null,
       "field": null,
       "description": "Click the Submit button to create the SMS template",
@@ -52,6 +55,7 @@
       "action": "goto",
       "selector": null,
       "fallback_selectors": [],
+      "to_selector": null,
       "value": "/:ws/templates?group=All&perPageLimit=30&env=dev&activeLayout=Grid",
       "field": null,
       "description": "Navigate back to the templates list page",
@@ -75,7 +79,7 @@
   ],
   "meta": {
     "created_at": "2026-07-04T02:47:55.859827+00:00",
-    "runs": 4,
+    "runs": 11,
     "heals": [
       {
         "step": "s3",
