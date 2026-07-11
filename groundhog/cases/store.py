@@ -1,6 +1,5 @@
 """Load/save cases (cases/) and flows (flows/) as pretty JSON, plus {{var}} rendering."""
 
-import json
 import re
 
 from groundhog.config import CASES_DIR, FLOWS_DIR
@@ -10,8 +9,10 @@ VAR = re.compile(r"\{\{\s*(\w+)\s*\}\}")
 
 
 def render(text: str, vars: dict[str, str] | None = None) -> str:
-    """Substitute {{name}} template vars. Applied to values and assertions at
-    run time — never to selectors, so one case serves many data values."""
+    """Substitute {{name}} template vars. Applied to values, assertions, and
+    selectors at run time, so one case serves many data values — including a
+    step that targets an entity created earlier in the same run by its
+    per-run name."""
     return VAR.sub(lambda m: (vars or {}).get(m.group(1), m.group(0)), text)
 
 

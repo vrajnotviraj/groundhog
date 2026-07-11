@@ -64,13 +64,26 @@ def run(name: str, var: list[str] = typer.Option([], help="template var, e.g. --
 def new(intent: str, name: str = typer.Option(None, help="case name (kebab-case); derived from intent if omitted"),
         var: list[str] = typer.Option([], help="concrete value for a {{var}} in the intent, e.g. --var name=gh-1; "
                                                "the saved case is re-parameterized automatically"),
+        verify: bool = typer.Option(False, help="after saving, replay the case once against fresh data to prove it works"),
         headed: bool = typer.Option(False, help="show the browser")):
     """Author a new case from a natural-language intent (agentic, one-time cost)."""
     _need_llm()
     from groundhog.agent.executor import author_case
 
-    case = author_case(intent, name=name, headless=not headed, vars=_parse_vars(var))
+    parsed = _parse_vars(var)
+    case = author_case(intent, name=name, headless=not headed, vars=parsed)
     console.print(f"[green]saved[/] cases/{case.name}.json — {len(case.steps)} steps, {len(case.assertions)} assertions")
+
+    if verify:
+        from groundhog.agent.executor import verify_case
+
+        result = verify_case(case, vars=parsed, headless=not headed)
+        if not result.passed:
+            broken = "; ".join(s.description for s in result.steps if s.mode == "failed") or "see steps above"
+            console.print(f"[red]verification failed[/] — {case.name} is saved but did not replay cleanly: {broken}. "
+                          "Run `groundhog run` to let the healer try, or edit the case JSON.")
+            raise typer.Exit(1)
+        console.print(f"[green]verified[/] {case.name} replays cleanly against fresh data")
 
 
 @app.command("list")

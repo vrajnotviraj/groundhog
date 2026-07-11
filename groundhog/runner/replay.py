@@ -9,11 +9,11 @@ JSON and the next run is fully static again.
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from typing import Literal
 
 from rich.console import Console
 
-from groundhog import config
-from groundhog.browser.actions import Ctx, check_expects, goto_app, run_step, settle
+from groundhog.browser.actions import Ctx, check_expects, goto_app, resolve_path, run_step, settle
 from groundhog.browser.session import Session
 from groundhog.cases.schema import Assertion, Case, Expect, Heal
 from groundhog.cases.store import render, save
@@ -26,7 +26,7 @@ MODE_STYLE = {"static": "dim", "fallback": "yellow", "healed": "magenta", "faile
 class StepResult:
     id: str
     description: str
-    mode: str  # static | fallback | healed | failed | skipped
+    mode: Literal["static", "fallback", "healed", "failed", "skipped"]
     selector: str | None
     ms: int
     drift: bool = False
@@ -36,7 +36,7 @@ class StepResult:
 @dataclass
 class AssertionResult:
     assertion: str
-    mode: str  # deterministic | llm
+    mode: Literal["deterministic", "llm"]
     passed: bool
     reasoning: str = ""
     confidence: float | None = None
@@ -82,7 +82,7 @@ def run_case(case: Case, session: Session, vars: dict[str, str] | None = None,
     result = RunResult(case=case.name, started_at=datetime.now(timezone.utc).isoformat())
     clock = time.monotonic()
 
-    goto_app(page, f"{config.BASE_URL}{case.start_path.replace('/:ws', '/' + ctx.ws if ctx.ws else '')}")
+    goto_app(page, resolve_path(case.start_path, ctx))
 
     healed_steps: list[tuple[str, Heal]] = []
     aborted = False

@@ -6,10 +6,10 @@ results) always comes after it in messages. A second top-level breakpoint
 caches the growing conversation on tool loops.
 """
 
-import re
 from pathlib import Path
 
 from groundhog import config
+from groundhog.cases.store import render
 
 SMART = config.SMART_MODEL
 FAST = config.FAST_MODEL
@@ -47,9 +47,10 @@ def _record(usage) -> None:
 
 
 def prompt(name: str, **slots: str) -> str:
-    """Load llm/prompts/<name>.md and fill its {{slot}} placeholders."""
-    text = (PROMPTS / f"{name}.md").read_text()
-    return re.sub(r"\{\{(\w+)\}\}", lambda m: slots.get(m.group(1), ""), text)
+    """Load llm/prompts/<name>.md and fill its {{slot}} placeholders — with the
+    same render() cases use, so illustrative {{var}} examples in prompt prose
+    stay literal instead of being blanked out of the text the model sees."""
+    return render((PROMPTS / f"{name}.md").read_text(), slots)
 
 
 def _system_block(system: str) -> list[dict]:

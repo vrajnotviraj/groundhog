@@ -1,4 +1,4 @@
-from groundhog.browser.selectors import clean_label, dedupe_ranked, embeds_value, is_weak, rank
+from groundhog.browser.selectors import dedupe_ranked, embeds_value, is_weak, rank
 
 
 def test_weak_selectors_rejected():
@@ -16,6 +16,18 @@ def test_weak_selectors_rejected():
     assert not is_weak('input[type="checkbox"]')
 
 
+def test_snapshot_syntax_leak_rejected():
+    # aria-snapshot shape (bare tag + quoted string) is invalid CSS, not a
+    # selector — Playwright throws a parse error, so the weak gate must catch it.
+    assert is_weak('button "Start"')
+    assert is_weak('link "Home"')
+    assert is_weak("option 'SMS'")
+    # real selectors that legitimately contain quotes still pass
+    assert not is_weak('role=button[name="Start"]')
+    assert not is_weak('button:has-text("Start")')
+    assert not is_weak('text="Start"')
+
+
 def test_reactflow_selectors_pass_existing_gate():
     # Anchored ReactFlow shapes are durable; bare canvas classes are not.
     assert not is_weak('.react-flow__node:has-text("SMS")')
@@ -29,12 +41,6 @@ def test_rank_prefers_durable_shapes():
                'role=button[name="Save"]', '[placeholder="Name"]', 'text="Save"']
     assert [rank(s) for s in ordered] == sorted(rank(s) for s in ordered)
     assert rank('button:has-text("Save")') == 6  # unranked shapes sort last
-
-
-def test_clean_label_drops_idlike_text():
-    assert clean_label("  Create   Template ") == "Create Template"
-    assert clean_label("Order 123456789") == ""  # long digit run = id-like
-    assert clean_label("x" * 50) == ""
 
 
 def test_embeds_value_guards_overfitting():

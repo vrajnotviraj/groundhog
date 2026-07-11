@@ -9,7 +9,7 @@ from rich.console import Console
 from rich.markup import escape
 
 from groundhog import config
-from groundhog.browser.actions import Ctx, goto_app, on_picker, perform, recover_workspace
+from groundhog.browser.actions import Ctx, goto_app, on_picker, perform, recover_workspace, resolve_path
 from groundhog.browser.session import Session
 from groundhog.browser.snapshot import fingerprint, snapshot
 from groundhog.browser.selectors import dedupe_ranked, embeds_value, is_weak
@@ -22,6 +22,8 @@ console = Console()
 _SEL = {"type": "string", "description": "resilient Playwright locator you saw in the snapshot"}
 _FALLBACKS = {"type": "array", "items": {"type": "string"},
               "description": "up to 2 alternate locators of different shapes for the same element"}
+_FRAME = {"type": "string",
+          "description": "iframe selector from the snapshot's Frame blocks — required when the element lives inside an iframe"}
 _DESC = {"type": "string", "description": "what this step does, one short sentence"}
 
 
@@ -35,29 +37,29 @@ TOOLS = [
           {"path": {"type": "string", "description": "path like /:ws/templates"}, "description": _DESC},
           ["path", "description"]),
     _tool("click", "Click an element.",
-          {"selector": _SEL, "fallback_selectors": _FALLBACKS, "description": _DESC},
+          {"selector": _SEL, "fallback_selectors": _FALLBACKS, "frame": _FRAME, "description": _DESC},
           ["selector", "description"]),
     _tool("fill", "Fill a text input.",
-          {"selector": _SEL, "value": {"type": "string"}, "fallback_selectors": _FALLBACKS, "description": _DESC},
+          {"selector": _SEL, "value": {"type": "string"}, "fallback_selectors": _FALLBACKS, "frame": _FRAME, "description": _DESC},
           ["selector", "value", "description"]),
     _tool("fill_secret", "Fill a credential input by field name — the value never leaves the runner.",
           {"selector": _SEL, "field": {"type": "string", "enum": ["user", "pass"]}, "description": _DESC},
           ["selector", "field", "description"]),
     _tool("select", "Select an option from a native <select> by its label.",
-          {"selector": _SEL, "value": {"type": "string"}, "fallback_selectors": _FALLBACKS, "description": _DESC},
+          {"selector": _SEL, "value": {"type": "string"}, "fallback_selectors": _FALLBACKS, "frame": _FRAME, "description": _DESC},
           ["selector", "value", "description"]),
     _tool("press", "Press a key on an element (e.g. Enter).",
-          {"selector": _SEL, "value": {"type": "string", "description": "key, e.g. Enter"}, "description": _DESC},
+          {"selector": _SEL, "value": {"type": "string", "description": "key, e.g. Enter"}, "frame": _FRAME, "description": _DESC},
           ["selector", "value", "description"]),
     _tool("hover", "Hover an element to reveal controls that only appear on hover "
           "(row/card action buttons). Use when a control resolves but is reported not visible.",
-          {"selector": _SEL, "fallback_selectors": _FALLBACKS, "description": _DESC},
+          {"selector": _SEL, "fallback_selectors": _FALLBACKS, "frame": _FRAME, "description": _DESC},
           ["selector", "description"]),
     _tool("drag", "Drag one element onto another: a palette item onto the canvas, or a "
           "node's source handle onto another node's target handle to connect them.",
           {"selector": _SEL,
            "to_selector": {"type": "string", "description": "locator for the drop target you saw in the snapshot"},
-           "fallback_selectors": _FALLBACKS, "description": _DESC},
+           "fallback_selectors": _FALLBACKS, "frame": _FRAME, "description": _DESC},
           ["selector", "to_selector", "description"]),
     _tool("read_docs", "Fetch a product documentation page as plain text.",
           {"url": {"type": "string"}}, ["url"]),
@@ -125,10 +127,20 @@ def run_executor(page, ctx: Ctx, intent: str, plan_steps: list[str], notes: str 
                  + f"\n{_page_state(page)}"}]
 
     nudges = 0
+    # A run of failed guesses (the FAST model flailing against an unfamiliar page)
+    # earns one turn on the SMART model; a single success drops back to FAST.
+    consecutive_failures = 0
     failed: dict[tuple[str, str], int] = {}
+    # The `failed` gate blocks a dead selector; this catches the opposite failure
+    # — a lost agent cycling through the same screens with "successful" clicks.
+    succeeded: dict[tuple[str, str], int] = {}
     for _ in range(max_actions or config.EXECUTOR_MAX_ACTIONS):
         _elide_stale_states(messages)
-        resp = client.message(messages, system=system, tools=TOOLS)
+        escalate = consecutive_failures >= 3
+        if escalate:
+            console.print(f"  [dim]↑ {consecutive_failures} actions failed — escalating to {client.SMART}[/]")
+        resp = client.message(messages, system=system, tools=TOOLS,
+                              model=client.SMART if escalate else client.FAST)
         tool_uses = [b for b in resp.content if b.type == "tool_use"]
         if not tool_uses:
             if nudges >= 2:
@@ -147,6 +159,16 @@ def run_executor(page, ctx: Ctx, intent: str, plan_steps: list[str], notes: str 
                 results.append({"type": "tool_result", "tool_use_id": tu.id, "content": "recorded"})
                 continue
             result = _execute(page, ctx, tu.name, dict(tu.input), trace, failed)
+            consecutive_failures = 0 if result["ok"] else consecutive_failures + 1
+            if result["ok"]:
+                skey = (tu.name, dict(tu.input).get("selector") or "")
+                succeeded[skey] = succeeded.get(skey, 0) + 1
+                if succeeded[skey] >= 3:
+                    result["text"] += (
+                        "\n\nnote: this exact action has now succeeded 3 times this run — "
+                        "if you are cycling through the same screens, step back: re-read the "
+                        "goal, and consider that the content you need may be inside an iframe "
+                        "(see Frame blocks in the snapshot) or behind a different control.")
             results.append({"type": "tool_result", "tool_use_id": tu.id,
                             "content": result["text"], "is_error": not result["ok"]})
         messages.append({"role": "user", "content": results})
@@ -183,17 +205,21 @@ def _execute(page, ctx: Ctx, action: str, inp: dict, trace: list[dict],
 
     if on_picker(page):
         recover_workspace(page)
-    url_before, fp_before = page.url, fingerprint(snapshot(page))
+    # goto steps never carry a fingerprint into the saved case (the optimizer
+    # only attaches them to selector steps), so skip the expensive snapshot.
+    url_before = page.url
+    fp_before = None if action == "goto" else fingerprint(snapshot(page))
     step = Step(
-        id="", action="goto" if action == "goto" else action,
+        id="", action=action,
         selector=inp.get("selector"),
         to_selector=inp.get("to_selector"),
+        frame=inp.get("frame"),
         value=inp.get("path") if action == "goto" else inp.get("value"),
         field=inp.get("field"),
         description=inp.get("description", ""),
     )
     try:
-        perform(page, step, ctx)
+        perform(page, step, ctx, fp_before=fp_before)
     except Exception as e:
         failed[key] = failed.get(key, 0) + 1
         # escape: selectors contain […] which Rich would swallow as markup tags.
@@ -204,7 +230,7 @@ def _execute(page, ctx: Ctx, action: str, inp: dict, trace: list[dict],
                                if not embeds_value(s, step.value)])[:2]
     trace.append({
         "action": step.action, "selector": step.selector, "fallback_selectors": fallbacks,
-        "to_selector": step.to_selector,
+        "to_selector": step.to_selector, "frame": step.frame,
         "value": None if action == "fill_secret" else step.value,
         "field": step.field, "description": step.description,
         "url_before": url_before, "url_after": page.url,
@@ -237,7 +263,7 @@ def _drive(session: Session, draft, live_intent: str, name: str) -> tuple[list[d
     """Run the executor against a logged-in session; returns (trace, done)."""
     ctx = Ctx(ws=session.ws)
     page = session.page
-    goto_app(page, f"{config.BASE_URL}{draft.start_path.replace('/:ws', '/' + ctx.ws if ctx.ws else '')}")
+    goto_app(page, resolve_path(draft.start_path, ctx))
     # Long flows: scale the runaway guard with plan size — ~5 live actions per
     # sub-goal absorbs retries and verification without letting a lost agent spin.
     budget = max(config.EXECUTOR_MAX_ACTIONS, 5 * len(draft.steps))
@@ -255,6 +281,33 @@ def _drive(session: Session, draft, live_intent: str, name: str) -> tuple[list[d
         raise RuntimeError(f"executor hit the {budget}-action budget before finishing — "
                            f"partial trace: {_dump_partial(name, trace)}")
     return trace, done
+
+
+def _verify_vars(vars: dict[str, str] | None, stamp: int) -> dict[str, str]:
+    """Fresh-suffix each supplied var value so a verification replay exercises the
+    same steps against new data — replaying a create-style case with the values
+    authoring just used would collide with them (duplicate-name rejection)."""
+    return {k: f"{v}-v{stamp}" for k, v in (vars or {}).items()}
+
+
+def verify_case(case: Case, vars: dict[str, str] | None = None, headless: bool = True):
+    """Prove a freshly authored case actually replays: one static run (no healer)
+    against fresh data. Returns the RunResult; never touches the saved case."""
+    from datetime import datetime, timezone
+
+    from groundhog.runner.replay import run_case
+
+    fresh = _verify_vars(vars, int(datetime.now(timezone.utc).timestamp()))
+    console.print(f"[cyan]verify[/] replaying {case.name} once against fresh data"
+                  + (f" ({', '.join(fresh.values())})" if fresh else ""))
+    with Session(headless=headless) as session:
+        session.ensure_logged_in()
+        result = run_case(case, session, vars=fresh, heal=False)
+    if fresh:
+        console.print("[yellow]note[/] verification created extra data "
+                      f"({', '.join(fresh.values())}) — this repo pairs creates with deletes "
+                      "at the flow level, not per case, so you may want to clean it up.")
+    return result
 
 
 def author_case(intent: str, name: str | None = None, headless: bool = True,

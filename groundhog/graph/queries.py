@@ -53,21 +53,6 @@ def slice_for_intent(intent: str, max_pages: int = 5, max_elements: int = 12) ->
     return "\n".join(lines)
 
 
-def elements_on_page(page_key: str, limit: int = 20) -> str:
-    rows = store.run("""
-        MATCH (:Page {key: $key})-[:HAS]->(e:Element)
-        RETURN e.selector AS selector, e.kind AS kind, e.description AS description
-        ORDER BY e.last_seen DESC LIMIT $limit""", key=page_key, limit=limit)
-    return "\n".join(f"[{r['kind']}] {r['selector']} — {r['description']}" for r in rows)
-
-
-def blast_radius(page_key: str) -> list[str]:
-    """Which cases cover a page — who breaks if it changes."""
-    rows = store.run("MATCH (c:Case)-[:COVERS]->(:Page {key: $key}) RETURN c.name AS name",
-                     key=page_key)
-    return [r["name"] for r in rows]
-
-
 def coverage_gaps() -> dict:
     """Structural gaps: uncovered pages, unexercised mutations, and section
     asymmetries (a covered flow one section has and a sibling section lacks)."""

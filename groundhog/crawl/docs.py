@@ -5,6 +5,7 @@ features), so extraction stays verifiable and Page→Feature linking is a
 one-property match. Opt-in via `groundhog crawl --docs`."""
 
 import re
+from urllib.parse import urlparse
 
 import httpx
 from pydantic import BaseModel, Field
@@ -34,7 +35,7 @@ def _sitemap_paths() -> list[str]:
     """Candidate docs paths, noise sections dropped. Docs sites do not
     guarantee a sitemap.xml, so fall back to harvesting same-site hrefs off
     the landing page (one GET) when the sitemap is missing or empty."""
-    prefix = re.sub(r"^https?://[^/]+", "", config.DOCS_URL)
+    prefix = urlparse(config.DOCS_URL).path
     resp = httpx.get(f"{config.DOCS_URL}/sitemap.xml", follow_redirects=True, timeout=15)
     urls = re.findall(r"<loc>\s*(.*?)\s*</loc>", resp.text) if resp.status_code == 200 else []
     if not urls:
@@ -43,7 +44,7 @@ def _sitemap_paths() -> list[str]:
                 if h.startswith("/") or h.startswith(config.DOCS_URL)]
     paths, seen = [], set()
     for u in urls:
-        p = re.sub(r"^https?://[^/]+", "", u).split("?")[0].split("#")[0].rstrip("/")
+        p = urlparse(u).path.rstrip("/")
         if p and p.startswith(prefix) and not any(n in p for n in NOISE) and p not in seen:
             seen.add(p)
             paths.append(p)

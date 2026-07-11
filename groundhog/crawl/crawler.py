@@ -27,7 +27,10 @@ def _harvest_links(page) -> list[dict]:
     out = []
     for a in anchors:
         href = (a["href"] or "").strip()
-        if not href.startswith("/") or any(s in href.lower() for s in SKIP_LINKS):
+        # "//x" is protocol-relative (an external host, not an app path) — it
+        # slips past the "/" check and pollutes the graph with bogus page keys.
+        if not href.startswith("/") or href.startswith("//") \
+                or any(s in href.lower() for s in SKIP_LINKS):
             continue
         out.append({"key": store.page_key(href), "text": a["text"][:60]})
     return out

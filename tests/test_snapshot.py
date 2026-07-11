@@ -1,4 +1,4 @@
-from groundhog.browser.snapshot import fingerprint, format_canvas, prune_tree
+from groundhog.browser.snapshot import fingerprint, format_canvas, format_frames, prune_tree
 
 
 def _tree(n):
@@ -38,6 +38,17 @@ def test_format_canvas_empty_or_malformed_renders_nothing():
     assert format_canvas({"nodes": [], "edges": []}) == ""
     assert format_canvas(None) == ""
     assert format_canvas({"nodes": "garbage"}) == ""
+
+
+def test_format_frames_renders_labeled_blocks_and_survives_bad_input():
+    frames = [
+        {"selector": 'iframe[title="Editor"]', "tree": '- button "Save"\n- textbox "Body"'},
+        {"selector": "iframe >> nth=1", "tree": "   "},  # blank frame dropped
+    ]
+    block = format_frames(frames)
+    assert 'Frame iframe[title="Editor"]:\n- button "Save"' in block
+    assert "iframe >> nth=1" not in block
+    assert format_frames([]) == "" and format_frames(None) == ""  # never throws
 
 
 def test_fingerprint_ignores_live_numbers():

@@ -13,24 +13,57 @@ Schema:
   (:Case)-[:COVERS]->(:Page)   (:Case)-[:EXERCISES]->(:Element)
 """
 
+import atexit
 import re
+from urllib.parse import urlparse
 
 from groundhog import config
 
 WS_ID = re.compile(r"/FY[A-Z0-9]{6,}(?=/|$)")
 
+# A few seconds, not library defaults (~30s) — a down/firewalled/hung Neo4j
+# must fail fast, since every caller treats the graph as an accelerator and
+# wraps it in try/except, never a wait.
+CONNECT_TIMEOUT_S = 5
+MAX_RETRY_TIME_S = 5
+
 _driver = None
+_unavailable: Exception | None = None
 
 
 def driver():
-    global _driver
-    if _driver is None:
-        from neo4j import GraphDatabase
+    """Raises fast when Neo4j is unreachable — cli._need_graph() relies on
+    that. Once a connection attempt fails, the failure is cached for the rest
+    of the process so every later call (one per ingest, one per replay) fails
+    immediately instead of re-paying the connection timeout."""
+    global _driver, _unavailable
+    if _driver is not None:
+        return _driver
+    if _unavailable is not None:
+        raise _unavailable
+    from neo4j import GraphDatabase
 
-        _driver = GraphDatabase.driver(config.NEO4J_URI,
-                                       auth=(config.NEO4J_USER, config.NEO4J_PASS))
-        _driver.verify_connectivity()
+    try:
+        d = GraphDatabase.driver(config.NEO4J_URI,
+                                 auth=(config.NEO4J_USER, config.NEO4J_PASS),
+                                 connection_timeout=CONNECT_TIMEOUT_S,
+                                 max_transaction_retry_time=MAX_RETRY_TIME_S,
+                                 # gaps in a fresh graph (no Feature nodes yet) are
+                                 # normal — don't have the server generate
+                                 # notifications for them
+                                 notifications_min_severity="OFF")
+        d.verify_connectivity()
+    except Exception as e:
+        _unavailable = e
+        raise
+    _driver = d
     return _driver
+
+
+@atexit.register
+def _close() -> None:
+    if _driver is not None:
+        _driver.close()
 
 
 def run(query: str, **params):
@@ -40,8 +73,7 @@ def run(query: str, **params):
 
 def page_key(url: str) -> str:
     """Normalized stateKey: /FYAP…/home → /:ws/home. Strips origin, query, hash."""
-    path = re.sub(r"^https?://[^/]+", "", url).split("?")[0].split("#")[0]
-    path = WS_ID.sub("/:ws", path)
+    path = WS_ID.sub("/:ws", urlparse(url).path)
     return path.rstrip("/") or "/"
 
 

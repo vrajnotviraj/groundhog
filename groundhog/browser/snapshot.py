@@ -102,9 +102,79 @@ def _canvas_supplement(page) -> str:
         return ""
 
 
+# The top-document aria tree stops at the iframe boundary, so an editor rendered
+# inside an iframe (Stripo, embedded WYSIWYG) is invisible to the agent. This
+# lists visible iframes with the metadata a Playwright frame selector is derived
+# from, so each frame's aria tree can be pulled and addressed.
+FRAMES_JS = """() => [...document.querySelectorAll('iframe')].map((f, i) => {
+  const r = f.getBoundingClientRect();
+  const s = getComputedStyle(f);
+  return {
+    nth: i,
+    name: f.getAttribute('name') || '',
+    title: f.getAttribute('title') || '',
+    id: f.id || '',
+    width: r.width, height: r.height,
+    hidden: s.visibility === 'hidden' || s.display === 'none' || f.hidden,
+  };
+})"""
+
+
+def _frame_selector(meta) -> str:
+    """A usable Playwright frame_locator selector for one iframe, preferring
+    stable attributes and falling back to positional nth."""
+    if meta.get("name"):
+        return f'iframe[name="{meta["name"]}"]'
+    if meta.get("title"):
+        return f'iframe[title="{meta["title"]}"]'
+    if meta.get("id"):
+        return f'#{meta["id"]}'
+    return f'iframe >> nth={meta.get("nth", 0)}'
+
+
+def format_frames(frames) -> str:
+    """Render per-iframe aria supplements as labeled text blocks — pure, so it
+    unit-tests without a browser. `frames` is a list of {selector, tree} dicts
+    (tree already pruned); empty or malformed data renders ""."""
+    try:
+        blocks = []
+        for f in frames:
+            tree = (f.get("tree") or "").strip()
+            if tree:
+                blocks.append(f"Frame {f.get('selector', '')}:\n{tree}")
+        return "\n\n".join(blocks)
+    except Exception:
+        return ""
+
+
+def _frames_supplement(page) -> str:
+    """A bounded per-iframe aria supplement (cap 3 visible frames). Any failure
+    — cross-origin restriction, detached frame, no evaluate — drops that frame;
+    a snapshot must never throw."""
+    try:
+        metas = page.evaluate(FRAMES_JS)
+    except Exception:
+        return ""
+    frames = []
+    for meta in metas or []:
+        try:
+            if meta.get("hidden") or meta.get("width", 0) < 1 or meta.get("height", 0) < 1:
+                continue
+            sel = _frame_selector(meta)
+            tree = page.frame_locator(sel).locator("body").aria_snapshot()
+            frames.append({"selector": sel, "tree": prune_tree(tree, max_lines=80)})
+        except Exception:
+            continue
+        if len(frames) >= 3:
+            break
+    block = format_frames(frames)
+    return f"\n\n{block}" if block else ""
+
+
 def snapshot(page, prune: bool = True) -> str:
     tree = page.locator("body").aria_snapshot()
-    return (prune_tree(tree) if prune else tree) + _canvas_supplement(page)
+    return ((prune_tree(tree) if prune else tree)
+            + _canvas_supplement(page) + _frames_supplement(page))
 
 
 def fingerprint(pruned_tree: str) -> str:
