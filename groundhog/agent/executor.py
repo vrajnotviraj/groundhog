@@ -9,7 +9,7 @@ from rich.console import Console
 from rich.markup import escape
 
 from groundhog import config
-from groundhog.browser.actions import Ctx, goto_app, on_picker, perform, recover_workspace
+from groundhog.browser.actions import Ctx, goto_app, on_picker, perform, recover_workspace, resolve_path
 from groundhog.browser.session import Session
 from groundhog.browser.snapshot import fingerprint, snapshot
 from groundhog.browser.selectors import dedupe_ranked, embeds_value, is_weak
@@ -125,10 +125,17 @@ def run_executor(page, ctx: Ctx, intent: str, plan_steps: list[str], notes: str 
                  + f"\n{_page_state(page)}"}]
 
     nudges = 0
+    # A run of failed guesses (the FAST model flailing against an unfamiliar page)
+    # earns one turn on the SMART model; a single success drops back to FAST.
+    consecutive_failures = 0
     failed: dict[tuple[str, str], int] = {}
     for _ in range(max_actions or config.EXECUTOR_MAX_ACTIONS):
         _elide_stale_states(messages)
-        resp = client.message(messages, system=system, tools=TOOLS)
+        escalate = consecutive_failures >= 3
+        if escalate:
+            console.print(f"  [dim]↑ {consecutive_failures} actions failed — escalating to {client.SMART}[/]")
+        resp = client.message(messages, system=system, tools=TOOLS,
+                              model=client.SMART if escalate else client.FAST)
         tool_uses = [b for b in resp.content if b.type == "tool_use"]
         if not tool_uses:
             if nudges >= 2:
@@ -147,6 +154,7 @@ def run_executor(page, ctx: Ctx, intent: str, plan_steps: list[str], notes: str 
                 results.append({"type": "tool_result", "tool_use_id": tu.id, "content": "recorded"})
                 continue
             result = _execute(page, ctx, tu.name, dict(tu.input), trace, failed)
+            consecutive_failures = 0 if result["ok"] else consecutive_failures + 1
             results.append({"type": "tool_result", "tool_use_id": tu.id,
                             "content": result["text"], "is_error": not result["ok"]})
         messages.append({"role": "user", "content": results})
@@ -237,7 +245,7 @@ def _drive(session: Session, draft, live_intent: str, name: str) -> tuple[list[d
     """Run the executor against a logged-in session; returns (trace, done)."""
     ctx = Ctx(ws=session.ws)
     page = session.page
-    goto_app(page, f"{config.BASE_URL}{draft.start_path.replace('/:ws', '/' + ctx.ws if ctx.ws else '')}")
+    goto_app(page, resolve_path(draft.start_path, ctx))
     # Long flows: scale the runaway guard with plan size — ~5 live actions per
     # sub-goal absorbs retries and verification without letting a lost agent spin.
     budget = max(config.EXECUTOR_MAX_ACTIONS, 5 * len(draft.steps))
@@ -255,6 +263,33 @@ def _drive(session: Session, draft, live_intent: str, name: str) -> tuple[list[d
         raise RuntimeError(f"executor hit the {budget}-action budget before finishing — "
                            f"partial trace: {_dump_partial(name, trace)}")
     return trace, done
+
+
+def _verify_vars(vars: dict[str, str] | None, stamp: int) -> dict[str, str]:
+    """Fresh-suffix each supplied var value so a verification replay exercises the
+    same steps against new data — replaying a create-style case with the values
+    authoring just used would collide with them (duplicate-name rejection)."""
+    return {k: f"{v}-v{stamp}" for k, v in (vars or {}).items()}
+
+
+def verify_case(case: Case, vars: dict[str, str] | None = None, headless: bool = True):
+    """Prove a freshly authored case actually replays: one static run (no healer)
+    against fresh data. Returns the RunResult; never touches the saved case."""
+    from datetime import datetime, timezone
+
+    from groundhog.runner.replay import run_case
+
+    fresh = _verify_vars(vars, int(datetime.now(timezone.utc).timestamp()))
+    console.print(f"[cyan]verify[/] replaying {case.name} once against fresh data"
+                  + (f" ({', '.join(fresh.values())})" if fresh else ""))
+    with Session(headless=headless) as session:
+        session.ensure_logged_in()
+        result = run_case(case, session, vars=fresh, heal=False)
+    if fresh:
+        console.print("[yellow]note[/] verification created extra data "
+                      f"({', '.join(fresh.values())}) — this repo pairs creates with deletes "
+                      "at the flow level, not per case, so you may want to clean it up.")
+    return result
 
 
 def author_case(intent: str, name: str | None = None, headless: bool = True,
