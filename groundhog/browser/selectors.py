@@ -17,6 +17,11 @@ ANCHOR = re.compile(r"[\[#=\"']")
 ROLE_TAG = re.compile(r"^(combobox|textbox|checkbox|radio|listbox|option|dialog"
                       r"|listitem|menuitem|switch|slider|tab|treeitem)\b")
 
+# Aria-snapshot syntax leaking into CSS (`button "Start"`, `link "Home"`): a bare
+# tag then a quoted string. Playwright throws a CSS parse error on it, so reject
+# it here to send the agent the durable-selector guidance instead of a raw crash.
+SNAPSHOT_SHAPE = re.compile(r"""^[a-zA-Z][\w-]*\s+["']""")
+
 # One locator engine per selector, ranked by durability.
 RANK = [
     re.compile(r"^\[data-testid="),
@@ -30,7 +35,8 @@ RANK = [
 
 def is_weak(selector: str | None) -> bool:
     s = (selector or "").strip()
-    return not s or not ANCHOR.search(s) or bool(ROLE_TAG.match(s))
+    return (not s or not ANCHOR.search(s) or bool(ROLE_TAG.match(s))
+            or bool(SNAPSHOT_SHAPE.match(s)))
 
 
 def rank(selector: str) -> int:

@@ -30,7 +30,13 @@ NEO4J_PASS = os.environ.get("NEO4J_PASS", "groundhog")
 HEADLESS = os.environ.get("HEADLESS", "1") == "1"
 # Bounded settle: networkidle may never fire on an app with websockets/polling.
 SETTLE_TIMEOUT_MS = int(os.environ.get("SETTLE_TIMEOUT_MS", "1500"))
-STEP_TIMEOUT_MS = int(os.environ.get("STEP_TIMEOUT_MS", "8000"))
+STEP_TIMEOUT_MS = int(os.environ.get("STEP_TIMEOUT_MS", "10000"))
+# Once an element's existence is established, actions and confirmations should be
+# quick — a short per-attempt budget keeps the fallback walk from multiplying the
+# full timeout, and fails a selector that matches nothing fast instead of at 8s.
+ACTION_PROBE_MS = int(os.environ.get("ACTION_PROBE_MS", "2000"))
+# Poll interval for the cheap existence waits (readiness + fail-fast probe).
+READINESS_POLL_MS = int(os.environ.get("READINESS_POLL_MS", "250"))
 EXECUTOR_MAX_ACTIONS = int(os.environ.get("EXECUTOR_MAX_ACTIONS", "25"))
 
 CRAWL_MAX_PAGES = int(os.environ.get("CRAWL_MAX_PAGES", "40"))

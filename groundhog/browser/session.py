@@ -58,7 +58,22 @@ class Session:
         self._pw.stop()
 
     def _authenticated(self) -> bool:
-        return self.page.locator('input[type="password"]').count() == 0
+        """Right after goto+settle the SPA may not have rendered the login form
+        yet, so a bare password-input count races to a false "authenticated".
+        Wait (bounded) for the first definite signal — a password field (not
+        logged in), or a workspace/picker URL (logged in). Cheap when the state
+        is already obvious: the first check returns immediately."""
+        deadline = time.monotonic() + config.STEP_TIMEOUT_MS / 1000
+        while True:
+            path = self.page.url.removeprefix(config.BASE_URL)
+            if WS_ID.match(path) or "/workspaces" in path:
+                return True
+            if self.page.locator('input[type="password"]').count() > 0:
+                return False
+            if time.monotonic() > deadline:
+                # Neither signal appeared; fall back to the password heuristic.
+                return self.page.locator('input[type="password"]').count() == 0
+            self.page.wait_for_timeout(250)
 
     def _capture(self) -> None:
         config.AUTH_DIR.mkdir(exist_ok=True)

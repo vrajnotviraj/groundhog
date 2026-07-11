@@ -7,7 +7,7 @@ what happened so the caller can decide to heal or fail.
 import time
 from dataclasses import dataclass
 
-from playwright.sync_api import Page
+from playwright.sync_api import Page, TimeoutError as PlaywrightTimeout
 
 from groundhog import config
 from groundhog.browser.snapshot import fingerprint, snapshot
@@ -32,6 +32,11 @@ class StepOutcome:
     error: str | None = None
 
 
+# Generic, app-agnostic loading indicators. Networkidle can settle while one of
+# these still covers the content it fetched, so a step acts too early.
+LOADING = '[aria-busy="true"], [role=progressbar], .ant-spin-spinning'
+
+
 def settle(page: Page, timeout_ms: int = None) -> None:
     """Wait for the page to settle, bounded: networkidle may never fire on an
     app with websockets/polling."""
@@ -39,6 +44,13 @@ def settle(page: Page, timeout_ms: int = None) -> None:
     try:
         page.wait_for_load_state("domcontentloaded")
         page.wait_for_load_state("networkidle", timeout=timeout_ms)
+    except Exception:
+        pass
+    # One short bounded wait for obvious spinners to detach. wait_for(hidden)
+    # resolves instantly when nothing matches, so this is a no-op on a still
+    # page and never stacks a second full timeout onto the networkidle wait.
+    try:
+        page.locator(LOADING).first.wait_for(state="hidden", timeout=timeout_ms)
     except Exception:
         pass
 
@@ -89,10 +101,23 @@ def goto_app(page: Page, url: str) -> None:
             settle(page)
 
 
-def perform(page: Page, step: Step, ctx: Ctx, selector: str | None = None) -> None:
+def _resolves(loc, timeout_ms: int) -> bool:
+    """Poll a locator's existence cheaply until it resolves or the bound expires.
+    A slow-rendering element still gets to attach; a selector that matches
+    nothing fails fast instead of waiting out a full action timeout."""
+    deadline = time.monotonic() + timeout_ms / 1000
+    while loc.count() == 0:
+        if time.monotonic() > deadline:
+            return False
+        loc.page.wait_for_timeout(config.READINESS_POLL_MS)
+    return True
+
+
+def perform(page: Page, step: Step, ctx: Ctx, selector: str | None = None,
+            timeout_ms: int | None = None) -> None:
     """One action against the live page. Throws on failure so callers decide
     whether to walk fallbacks, heal, or fail."""
-    timeout = config.STEP_TIMEOUT_MS
+    timeout = timeout_ms or config.STEP_TIMEOUT_MS
     if step.action == "goto":
         goto_app(page, resolve_path(step.value or step.selector or "/", ctx))
         return
@@ -100,6 +125,14 @@ def perform(page: Page, step: Step, ctx: Ctx, selector: str | None = None) -> No
     # earlier in the same test by its per-run name. Literals never substitute.
     loc = page.locator(render(selector or step.selector or "", ctx.vars)).first
     value = render(step.value or "", ctx.vars)
+    # Fail-fast existence probe: a bad selector (a wrong agent guess) otherwise
+    # burns the full action timeout. wait_for waits for visibility itself, so it
+    # keeps the full budget. Once existence is established the action below gets
+    # its normal timeout, so a slow page still works.
+    if step.action != "wait_for" and not _resolves(loc, config.ACTION_PROBE_MS):
+        raise PlaywrightTimeout(
+            f"selector resolved 0 elements after {config.ACTION_PROBE_MS}ms: "
+            f"{render(selector or step.selector or '', ctx.vars)}")
     if step.action == "click":
         loc.click(timeout=timeout)
     elif step.action == "fill":
@@ -153,12 +186,48 @@ def check_expects(page: Page, expects: Expect, ctx: Ctx) -> bool:
         return False
 
 
+def _await_ready(page: Page, ctx: Ctx, candidates: list[tuple[int, str]]) -> list[tuple[int, str]]:
+    """One shared bounded readiness wait for the whole candidate set: poll every
+    candidate's existence cheaply until the first resolves or the step budget
+    expires, then return the resolved ones in order. Without this each candidate
+    would burn a full action timeout on a page that simply hasn't rendered yet,
+    multiplying the wait by the fallback count. Zero LLM calls."""
+    deadline = time.monotonic() + config.STEP_TIMEOUT_MS / 1000
+    while True:
+        ready = []
+        for i, sel in candidates:
+            try:
+                if page.locator(render(sel, ctx.vars)).first.count() > 0:
+                    ready.append((i, sel))
+            except Exception:
+                pass  # invalid selector never resolves; the walk surfaces the error
+        if ready or time.monotonic() > deadline:
+            return ready
+        page.wait_for_timeout(config.READINESS_POLL_MS)
+
+
+def _perform_settle_retry(page: Page, step: Step, ctx: Ctx, sel: str) -> None:
+    """Act with a short timeout — existence is already established, so the action
+    itself is quick. On an actionability timeout (a toast/overlay intercepts the
+    pointer, or hydration is late) settle once and retry the same candidate;
+    bounded, no loop."""
+    try:
+        perform(page, step, ctx, selector=sel, timeout_ms=config.ACTION_PROBE_MS)
+    except PlaywrightTimeout:
+        settle(page)
+        # Full budget on the retry: an element that exists but is slow to become
+        # actionable (animation, late enable) must not fail faster than before.
+        perform(page, step, ctx, selector=sel)
+
+
 def run_step(page: Page, step: Step, ctx: Ctx) -> StepOutcome:
     """The static replay of one step: drift gate → selector → fallbacks →
     expects → no-op detection. Zero LLM calls."""
-    drift = False
-    if step.page_fingerprint:
-        drift = fingerprint(snapshot(page)) != step.page_fingerprint
+    # One aria_snapshot per step: it is expensive on a big page, so compute the
+    # fingerprint once and reuse it for both the drift gate and the no-op baseline.
+    need_fp = bool(step.page_fingerprint) or step.action != "goto"
+    current_fp = fingerprint(snapshot(page)) if need_fp else None
+    drift = bool(step.page_fingerprint) and current_fp != step.page_fingerprint
 
     if step.action == "goto":
         # A goto can "succeed" yet land elsewhere — the app redirects entity
@@ -178,13 +247,15 @@ def run_step(page: Page, step: Step, ctx: Ctx) -> StepOutcome:
     if on_picker(page):
         recover_workspace(page)
 
-    before_url, before_fp = page.url, fingerprint(snapshot(page))
+    before_url, before_fp = page.url, current_fp
+    candidates = [(i, sel) for i, sel in enumerate([step.selector, *step.fallback_selectors]) if sel]
+    ready = _await_ready(page, ctx, candidates)
+    # When nothing resolved within the budget, still attempt the primary once so
+    # a real Playwright error (not a bare "no selector") reaches report and healer.
     last_error = None
-    for i, sel in enumerate([step.selector, *step.fallback_selectors]):
-        if not sel:
-            continue
+    for i, sel in ready or candidates[:1]:
         try:
-            perform(page, step, ctx, selector=sel)
+            _perform_settle_retry(page, step, ctx, sel)
         except Exception as e:
             last_error = str(e).split("\n")[0]
             continue

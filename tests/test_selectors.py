@@ -16,6 +16,18 @@ def test_weak_selectors_rejected():
     assert not is_weak('input[type="checkbox"]')
 
 
+def test_snapshot_syntax_leak_rejected():
+    # aria-snapshot shape (bare tag + quoted string) is invalid CSS, not a
+    # selector — Playwright throws a parse error, so the weak gate must catch it.
+    assert is_weak('button "Start"')
+    assert is_weak('link "Home"')
+    assert is_weak("option 'SMS'")
+    # real selectors that legitimately contain quotes still pass
+    assert not is_weak('role=button[name="Start"]')
+    assert not is_weak('button:has-text("Start")')
+    assert not is_weak('text="Start"')
+
+
 def test_reactflow_selectors_pass_existing_gate():
     # Anchored ReactFlow shapes are durable; bare canvas classes are not.
     assert not is_weak('.react-flow__node:has-text("SMS")')
