@@ -191,9 +191,12 @@ def _execute(page, ctx: Ctx, action: str, inp: dict, trace: list[dict],
 
     if on_picker(page):
         recover_workspace(page)
-    url_before, fp_before = page.url, fingerprint(snapshot(page))
+    # goto steps never carry a fingerprint into the saved case (the optimizer
+    # only attaches them to selector steps), so skip the expensive snapshot.
+    url_before = page.url
+    fp_before = None if action == "goto" else fingerprint(snapshot(page))
     step = Step(
-        id="", action="goto" if action == "goto" else action,
+        id="", action=action,
         selector=inp.get("selector"),
         to_selector=inp.get("to_selector"),
         value=inp.get("path") if action == "goto" else inp.get("value"),
@@ -201,7 +204,7 @@ def _execute(page, ctx: Ctx, action: str, inp: dict, trace: list[dict],
         description=inp.get("description", ""),
     )
     try:
-        perform(page, step, ctx)
+        perform(page, step, ctx, fp_before=fp_before)
     except Exception as e:
         failed[key] = failed.get(key, 0) + 1
         # escape: selectors contain […] which Rich would swallow as markup tags.

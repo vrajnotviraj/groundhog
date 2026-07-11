@@ -9,6 +9,7 @@ JSON and the next run is fully static again.
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from typing import Literal
 
 from rich.console import Console
 
@@ -25,7 +26,7 @@ MODE_STYLE = {"static": "dim", "fallback": "yellow", "healed": "magenta", "faile
 class StepResult:
     id: str
     description: str
-    mode: str  # static | fallback | healed | failed | skipped
+    mode: Literal["static", "fallback", "healed", "failed", "skipped"]
     selector: str | None
     ms: int
     drift: bool = False
@@ -35,7 +36,7 @@ class StepResult:
 @dataclass
 class AssertionResult:
     assertion: str
-    mode: str  # deterministic | llm
+    mode: Literal["deterministic", "llm"]
     passed: bool
     reasoning: str = ""
     confidence: float | None = None

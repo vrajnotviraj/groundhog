@@ -1,6 +1,5 @@
 """Load/save cases (cases/) and flows (flows/) as pretty JSON, plus {{var}} rendering."""
 
-import json
 import re
 
 from groundhog.config import CASES_DIR, FLOWS_DIR

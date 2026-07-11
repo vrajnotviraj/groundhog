@@ -5,12 +5,14 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from groundhog.cases.schema import Assertion, Case, Expect, Step
+from groundhog.cases.schema import Action, Assertion, Case, Expect, Step
 from groundhog.llm import client
 
 
 class OptStep(BaseModel):
-    action: Literal["goto", "click", "fill", "fill_secret", "select", "press", "wait_for", "drag"]
+    # The shared Action type, not a hand-copied list — a copy drifted once and
+    # silently rejected hover steps the executor had just recorded.
+    action: Action
     selector: str | None = None
     fallback_selectors: list[str] = Field(default_factory=list)
     to_selector: str | None = None

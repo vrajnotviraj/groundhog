@@ -15,6 +15,7 @@ Schema:
 
 import atexit
 import re
+from urllib.parse import urlparse
 
 from groundhog import config
 
@@ -72,8 +73,7 @@ def run(query: str, **params):
 
 def page_key(url: str) -> str:
     """Normalized stateKey: /FYAP…/home → /:ws/home. Strips origin, query, hash."""
-    path = re.sub(r"^https?://[^/]+", "", url).split("?")[0].split("#")[0]
-    path = WS_ID.sub("/:ws", path)
+    path = WS_ID.sub("/:ws", urlparse(url).path)
     return path.rstrip("/") or "/"
 
 

@@ -114,7 +114,7 @@ def _resolves(loc, timeout_ms: int) -> bool:
 
 
 def perform(page: Page, step: Step, ctx: Ctx, selector: str | None = None,
-            timeout_ms: int | None = None) -> None:
+            timeout_ms: int | None = None, fp_before: str | None = None) -> None:
     """One action against the live page. Throws on failure so callers decide
     whether to walk fallbacks, heal, or fail."""
     timeout = timeout_ms or config.STEP_TIMEOUT_MS
@@ -154,17 +154,18 @@ def perform(page: Page, step: Step, ctx: Ctx, selector: str | None = None,
         # triggers a manual mouse drag, with intermediate move events while
         # pressed, which is what d3-drag needs to register.
         dst = page.locator(render(step.to_selector or "", ctx.vars)).first
-        fp_before = fingerprint(snapshot(page))
+        fp = fp_before or fingerprint(snapshot(page))
         loc.drag_to(dst, timeout=timeout)
         settle(page)
-        if fingerprint(snapshot(page)) == fp_before:
-            loc.hover(timeout=timeout)
-            page.mouse.down()
-            box = dst.bounding_box()
-            if box:
-                page.mouse.move(box["x"] + box["width"] / 2,
-                                box["y"] + box["height"] / 2, steps=15)
-            page.mouse.up()
+        if fingerprint(snapshot(page)) != fp:
+            return  # drag registered and the page already settled once
+        loc.hover(timeout=timeout)
+        page.mouse.down()
+        box = dst.bounding_box()
+        if box:
+            page.mouse.move(box["x"] + box["width"] / 2,
+                            box["y"] + box["height"] / 2, steps=15)
+        page.mouse.up()
     settle(page)
 
 
@@ -206,17 +207,20 @@ def _await_ready(page: Page, ctx: Ctx, candidates: list[tuple[int, str]]) -> lis
         page.wait_for_timeout(config.READINESS_POLL_MS)
 
 
-def _perform_settle_retry(page: Page, step: Step, ctx: Ctx, sel: str) -> None:
+def _perform_settle_retry(page: Page, step: Step, ctx: Ctx, sel: str,
+                          fp_before: str | None = None) -> None:
     """Act with a short timeout — existence is already established, so the action
     itself is quick. On an actionability timeout (a toast/overlay intercepts the
     pointer, or hydration is late) settle once and retry the same candidate;
     bounded, no loop."""
     try:
-        perform(page, step, ctx, selector=sel, timeout_ms=config.ACTION_PROBE_MS)
+        perform(page, step, ctx, selector=sel, timeout_ms=config.ACTION_PROBE_MS,
+                fp_before=fp_before)
     except PlaywrightTimeout:
         settle(page)
         # Full budget on the retry: an element that exists but is slow to become
         # actionable (animation, late enable) must not fail faster than before.
+        # The page may have changed since fp_before was taken — recompute.
         perform(page, step, ctx, selector=sel)
 
 
@@ -255,7 +259,7 @@ def run_step(page: Page, step: Step, ctx: Ctx) -> StepOutcome:
     last_error = None
     for i, sel in ready or candidates[:1]:
         try:
-            _perform_settle_retry(page, step, ctx, sel)
+            _perform_settle_retry(page, step, ctx, sel, fp_before=before_fp)
         except Exception as e:
             last_error = str(e).split("\n")[0]
             continue

@@ -10,6 +10,7 @@ data always gets its chance to delete it.
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from typing import Literal
 
 from rich.console import Console
 
@@ -25,7 +26,7 @@ console = Console()
 @dataclass
 class CaseRun:
     name: str
-    stage: str  # chain | cleanup
+    stage: Literal["chain", "cleanup"]
     result: RunResult | None  # None: skipped, or the case itself failed to load
     error: str | None = None  # set when the case file couldn't be loaded/run at all
 

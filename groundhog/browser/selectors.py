@@ -47,13 +47,6 @@ def rank(selector: str) -> int:
     return len(RANK)
 
 
-def clean_label(text: str | None) -> str:
-    """A short, single-line label with no long digit run (id-like data) — stable
-    enough to key a text= selector on."""
-    t = re.sub(r"\s+", " ", text or "").strip()
-    return t if t and len(t) <= 40 and not re.search(r"\d{4,}", t) else ""
-
-
 def embeds_value(selector: str, value: str | None) -> bool:
     """Overfitting guard: a selector must never embed the step's data value,
     or the case breaks the moment the test data changes. A {{var}} placeholder
