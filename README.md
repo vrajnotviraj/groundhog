@@ -28,6 +28,7 @@ Like the movie: it wakes up, sees the same day, and gets a little better at it.
 - **Tests fix themselves.** A broken selector triggers one small AI call that heals it, and refuses when healing would be dangerous (a Delete step never heals to Cancel).
 - **Your app gets mapped.** A crawler builds a knowledge graph of your app in Neo4j. Every run enriches it. `groundhog suggest` tells you what you haven't tested yet.
 - **Long flows work.** "Create a route, then a template, then an event that wires them together" authors in one pass and replays statically.
+- **Cases chain into flows.** `groundhog flow new "create a template, then an event on it, then clean up"` reuses saved cases, authors the missing ones live, and pairs every create with a delete that runs even when the chain fails.
 
 ## Quick start (~5 minutes)
 
@@ -82,6 +83,38 @@ exact token spend. Long runs fail safe: Ctrl-C during a crawl keeps every page
 already ingested, and a failed authoring run dumps its partial trace to `runs/`
 so the agent's work isn't lost.
 
+## Chain cases into flows
+
+One case tests one thing. A flow chains saved cases into a longer story: create a
+template, create an event that uses it, delete both. One browser session, one
+login, one shared set of `{{var}}` values.
+
+```sh
+uv run groundhog flow new "create an SMS template, verify it shows up in search, then delete it"
+uv run groundhog flow run template-lifecycle     # static replay, zero AI
+uv run groundhog flow list
+```
+
+`flow new` is an orchestrator. It splits the description into case-sized steps,
+replays the ones a saved case already covers, and authors the missing ones on
+the spot, in chain order against real app state. That's what lets the case that
+creates an event pick the template the chain just created. After that one pass,
+the flow and every case in it are saved, and `flow run` is static.
+
+Cleanup is part of the contract. Cases under `cleanup` run even when the chain
+fails, the composer pairs every create with a delete, and a flow only passes if
+cleanup passes too. Shared vars default to per-run values like `gh-{{stamp}}`,
+so runs never collide with leftover data.
+
+A flow file is small enough to write by hand:
+
+```json
+{"name": "template-lifecycle",
+ "vars": {"name": "gh-{{stamp}}"},
+ "chain": ["create-sms-template", {"case": "search-templates", "vars": {"query": "{{name}}"}}],
+ "cleanup": ["delete-sms-template"]}
+```
+
 ## How a run works
 
 1. **Static replay.** Each step checks for page drift (a fingerprint of the
@@ -125,11 +158,12 @@ groundhog/
   config.py              env, model slots, budgets
   browser/               session+login · snapshot pruning+fingerprints · step execution · selector rules
   llm/                   Anthropic wrapper (structured output, caching, usage counter) · prompts/*.md
-  agent/                 planner · executor · optimizer · healer · judge
+  agent/                 planner · executor · optimizer · healer · judge · composer
   graph/                 Neo4j store (single write path) · queries · ingest
   crawl/                 budgeted BFS crawler · LLM page observation
   cases/ runner/         case schema+store · replay orchestration · reports
 cases/                   saved test cases (JSON, edit freely)
+flows/                   saved flows — chains of cases (JSON, edit freely)
 runs/                    run reports
 ```
 
