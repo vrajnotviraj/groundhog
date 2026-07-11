@@ -75,6 +75,19 @@ class _Loc:
         self._act("hover", timeout)
 
 
+class _FrameLoc:
+    """A fake FrameLocator: .locator(sel) returns a normal _Loc keyed on the
+    inner selector, mirroring Playwright — so one existence/action path serves
+    both top-document and in-frame locators."""
+
+    def __init__(self, page, frame_sel):
+        self.page = page
+        self.frame_sel = frame_sel
+
+    def locator(self, selector):
+        return _Loc(self.page, selector)
+
+
 class _Page:
     def __init__(self, clock, url="/app/home", aria='- button "x"', counts=None):
         self.clock = clock
@@ -88,9 +101,14 @@ class _Page:
         self.intercepts = {}    # (kind, selector) -> callable (may raise / mutate)
         self.slept = 0
         self.polls = 0
+        self.frame_locators = []  # frame selectors passed to frame_locator()
 
     def locator(self, selector):
         return _Loc(self, selector)
+
+    def frame_locator(self, selector):
+        self.frame_locators.append(selector)
+        return _FrameLoc(self, selector)
 
     def wait_for_timeout(self, ms):
         self.slept += ms
@@ -161,6 +179,33 @@ def test_click_settles_and_retries_once_on_actionability_timeout(monkeypatch):
         ("click", "#save", config.ACTION_PROBE_MS),
         ("click", "#save", config.STEP_TIMEOUT_MS)]
     assert page.load_states  # a settle ran between the two attempts
+
+
+def test_step_with_frame_resolves_locator_inside_the_iframe(monkeypatch):
+    # An element only reachable inside an iframe: the step's frame selector must
+    # route existence + action through page.frame_locator(frame).locator(sel).
+    page = _mk(monkeypatch, counts={"#editor-body": 1})
+    page.intercepts[("click", "#editor-body")] = lambda: setattr(page, "url", "/app/edited")
+    step = Step(action="click", selector="#editor-body", frame='iframe[title="Editor"]')
+    out = actions.run_step(page, step, actions.Ctx())
+    assert out.ok and out.selector == "#editor-body"
+    # every locator resolution routed through the frame; none against the top document
+    assert page.frame_locators and set(page.frame_locators) == {'iframe[title="Editor"]'}
+    assert ("click", "#editor-body", config.ACTION_PROBE_MS) in page.actions
+
+
+def test_exists_but_not_actionable_click_gets_a_next_strategy_hint(monkeypatch):
+    # A label-wrapped Ant checkbox: it passes the existence probe but every click
+    # times out. The raw Playwright timeout must gain the actionable hint so the
+    # agent/healer switches strategy instead of retrying the same dead selector.
+    sel = 'role=checkbox[name="SMS"]'
+    page = _mk(monkeypatch, counts={sel: 1})
+    page.intercepts[("click", sel)] = lambda: (_ for _ in ()).throw(
+        PWTimeout("click: Timeout 10000ms exceeded."))
+    out = actions.run_step(page, Step(action="click", selector=sel), actions.Ctx())
+    assert not out.ok
+    assert "never became actionable" in out.error
+    assert "Timeout 10000ms exceeded" in out.error  # original first line kept
 
 
 def test_run_step_snapshots_the_page_once(monkeypatch):

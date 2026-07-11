@@ -23,6 +23,9 @@ class Step(BaseModel):
     fallback_selectors: list[str] = Field(default_factory=list)
     # Drop target for drag; healing never rewrites it.
     to_selector: str | None = None
+    # Playwright iframe selector; when set, this step's locators resolve inside
+    # that frame (the top-document aria tree stops at the iframe boundary).
+    frame: str | None = None
     value: str | None = None
     # fill_secret stores only the field name; the value is injected from env.
     field: Literal["user", "pass"] | None = None

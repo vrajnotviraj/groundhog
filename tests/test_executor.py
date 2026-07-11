@@ -104,6 +104,35 @@ def test_run_executor_escalates_to_smart_after_three_consecutive_failures(monkey
     assert models == [FAST, FAST, FAST, SMART, SMART, FAST]
 
 
+def test_run_executor_annotates_the_third_repeat_of_a_successful_action(monkeypatch):
+    """A lost agent circling with 'successful' clicks gets no failure gate; the
+    3rd success of the same (action, selector) must carry the loop-back note."""
+    from types import SimpleNamespace
+
+    from groundhog.agent import executor
+    from groundhog.browser.actions import Ctx
+
+    monkeypatch.setattr(executor, "snapshot", lambda page: "- button 'x'")
+    fed_back: list[str] = []
+
+    def fake_message(messages, system, tools=None, model=None, max_tokens=2048):
+        for m in messages:
+            if isinstance(m["content"], list):
+                fed_back.extend(b["content"] for b in m["content"]
+                                if isinstance(b, dict) and b.get("type") == "tool_result")
+        return SimpleNamespace(content=[SimpleNamespace(
+            type="tool_use", name="click", id="t",
+            input={"selector": 'role=button[name="x"]', "description": "x"})])
+
+    monkeypatch.setattr(executor.client, "message", fake_message)
+    monkeypatch.setattr(executor, "_execute",
+                        lambda page, ctx, action, inp, trace, failed: {"ok": True, "text": "ok"})
+
+    executor.run_executor(SimpleNamespace(url="/x"), Ctx(), "intent", ["s"], max_actions=5)
+    annotated = [t for t in fed_back if "succeeded 3 times this run" in t]
+    assert annotated  # the 3rd+ success fed the loop-guard note back to the model
+
+
 def test_verify_vars_appends_fresh_suffix_to_every_supplied_value():
     from groundhog.agent.executor import _verify_vars
 

@@ -101,6 +101,16 @@ def goto_app(page: Page, url: str) -> None:
             settle(page)
 
 
+def _locator(page: Page, step: Step, ctx: Ctx, sel: str):
+    """Resolve a locator for `sel`, inside step.frame when the step targets an
+    iframe. A frame_locator's .locator(...) is a normal Locator (has .count and
+    .page), so one existence/action code path serves both."""
+    rendered = render(sel or "", ctx.vars)
+    if step.frame:
+        return page.frame_locator(render(step.frame, ctx.vars)).locator(rendered).first
+    return page.locator(rendered).first
+
+
 def _resolves(loc, timeout_ms: int) -> bool:
     """Poll a locator's existence cheaply until it resolves or the bound expires.
     A slow-rendering element still gets to attach; a selector that matches
@@ -123,7 +133,8 @@ def perform(page: Page, step: Step, ctx: Ctx, selector: str | None = None,
         return
     # Selectors render {{var}} too, so a step can target an entity created
     # earlier in the same test by its per-run name. Literals never substitute.
-    loc = page.locator(render(selector or step.selector or "", ctx.vars)).first
+    sel = selector or step.selector or ""
+    loc = _locator(page, step, ctx, sel)
     value = render(step.value or "", ctx.vars)
     # Fail-fast existence probe: a bad selector (a wrong agent guess) otherwise
     # burns the full action timeout. wait_for waits for visibility itself, so it
@@ -132,28 +143,40 @@ def perform(page: Page, step: Step, ctx: Ctx, selector: str | None = None,
     if step.action != "wait_for" and not _resolves(loc, config.ACTION_PROBE_MS):
         raise PlaywrightTimeout(
             f"selector resolved 0 elements after {config.ACTION_PROBE_MS}ms: "
-            f"{render(selector or step.selector or '', ctx.vars)}")
-    if step.action == "click":
-        loc.click(timeout=timeout)
-    elif step.action == "fill":
-        loc.fill(value, timeout=timeout)
-    elif step.action == "fill_secret":
-        loc.fill(_credential(step.field or "user"), timeout=timeout)
-    elif step.action == "select":
-        loc.select_option(label=value, timeout=timeout)
-    elif step.action == "press":
-        loc.press(value or "Enter", timeout=timeout)
+            f"{render(sel, ctx.vars)}")
+    if step.action in ("click", "fill", "fill_secret", "select", "press", "hover"):
+        # Existence already passed the probe, so a timeout here means the element
+        # is present but not actionable (visually hidden, covered by an overlay,
+        # a label-wrapped Ant-style input). The bare Playwright timeout gives the
+        # agent no way forward; the appended hint teaches the next-strategy move.
+        try:
+            if step.action == "click":
+                loc.click(timeout=timeout)
+            elif step.action == "fill":
+                loc.fill(value, timeout=timeout)
+            elif step.action == "fill_secret":
+                loc.fill(_credential(step.field or "user"), timeout=timeout)
+            elif step.action == "select":
+                loc.select_option(label=value, timeout=timeout)
+            elif step.action == "press":
+                loc.press(value or "Enter", timeout=timeout)
+            elif step.action == "hover":
+                # reveals hover-only controls (e.g. row action buttons) for the next step
+                loc.hover(timeout=timeout)
+        except PlaywrightTimeout as e:
+            first = str(e).splitlines()[0] if str(e) else "Timeout exceeded"
+            raise PlaywrightTimeout(
+                f"{first} — {render(sel, ctx.vars)} exists but never became actionable "
+                "(visually hidden or covered) — try its visible label, row, or parent "
+                "instead") from e
     elif step.action == "wait_for":
         loc.wait_for(state="visible", timeout=timeout)
-    elif step.action == "hover":
-        # reveals hover-only controls (e.g. row action buttons) for the next step
-        loc.hover(timeout=timeout)
     elif step.action == "drag":
         # drag_to covers HTML5-dnd palettes but no-ops silently on d3-drag
         # handles (it does not throw) — an unchanged fingerprint after settle
         # triggers a manual mouse drag, with intermediate move events while
         # pressed, which is what d3-drag needs to register.
-        dst = page.locator(render(step.to_selector or "", ctx.vars)).first
+        dst = _locator(page, step, ctx, step.to_selector or "")
         fp = fp_before or fingerprint(snapshot(page))
         loc.drag_to(dst, timeout=timeout)
         settle(page)
@@ -187,7 +210,8 @@ def check_expects(page: Page, expects: Expect, ctx: Ctx) -> bool:
         return False
 
 
-def _await_ready(page: Page, ctx: Ctx, candidates: list[tuple[int, str]]) -> list[tuple[int, str]]:
+def _await_ready(page: Page, step: Step, ctx: Ctx,
+                 candidates: list[tuple[int, str]]) -> list[tuple[int, str]]:
     """One shared bounded readiness wait for the whole candidate set: poll every
     candidate's existence cheaply until the first resolves or the step budget
     expires, then return the resolved ones in order. Without this each candidate
@@ -198,7 +222,7 @@ def _await_ready(page: Page, ctx: Ctx, candidates: list[tuple[int, str]]) -> lis
         ready = []
         for i, sel in candidates:
             try:
-                if page.locator(render(sel, ctx.vars)).first.count() > 0:
+                if _locator(page, step, ctx, sel).count() > 0:
                     ready.append((i, sel))
             except Exception:
                 pass  # invalid selector never resolves; the walk surfaces the error
@@ -253,7 +277,7 @@ def run_step(page: Page, step: Step, ctx: Ctx) -> StepOutcome:
 
     before_url, before_fp = page.url, current_fp
     candidates = [(i, sel) for i, sel in enumerate([step.selector, *step.fallback_selectors]) if sel]
-    ready = _await_ready(page, ctx, candidates)
+    ready = _await_ready(page, step, ctx, candidates)
     # When nothing resolved within the budget, still attempt the primary once so
     # a real Playwright error (not a bare "no selector") reaches report and healer.
     last_error = None

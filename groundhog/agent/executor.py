@@ -22,6 +22,8 @@ console = Console()
 _SEL = {"type": "string", "description": "resilient Playwright locator you saw in the snapshot"}
 _FALLBACKS = {"type": "array", "items": {"type": "string"},
               "description": "up to 2 alternate locators of different shapes for the same element"}
+_FRAME = {"type": "string",
+          "description": "iframe selector from the snapshot's Frame blocks — required when the element lives inside an iframe"}
 _DESC = {"type": "string", "description": "what this step does, one short sentence"}
 
 
@@ -35,29 +37,29 @@ TOOLS = [
           {"path": {"type": "string", "description": "path like /:ws/templates"}, "description": _DESC},
           ["path", "description"]),
     _tool("click", "Click an element.",
-          {"selector": _SEL, "fallback_selectors": _FALLBACKS, "description": _DESC},
+          {"selector": _SEL, "fallback_selectors": _FALLBACKS, "frame": _FRAME, "description": _DESC},
           ["selector", "description"]),
     _tool("fill", "Fill a text input.",
-          {"selector": _SEL, "value": {"type": "string"}, "fallback_selectors": _FALLBACKS, "description": _DESC},
+          {"selector": _SEL, "value": {"type": "string"}, "fallback_selectors": _FALLBACKS, "frame": _FRAME, "description": _DESC},
           ["selector", "value", "description"]),
     _tool("fill_secret", "Fill a credential input by field name — the value never leaves the runner.",
           {"selector": _SEL, "field": {"type": "string", "enum": ["user", "pass"]}, "description": _DESC},
           ["selector", "field", "description"]),
     _tool("select", "Select an option from a native <select> by its label.",
-          {"selector": _SEL, "value": {"type": "string"}, "fallback_selectors": _FALLBACKS, "description": _DESC},
+          {"selector": _SEL, "value": {"type": "string"}, "fallback_selectors": _FALLBACKS, "frame": _FRAME, "description": _DESC},
           ["selector", "value", "description"]),
     _tool("press", "Press a key on an element (e.g. Enter).",
-          {"selector": _SEL, "value": {"type": "string", "description": "key, e.g. Enter"}, "description": _DESC},
+          {"selector": _SEL, "value": {"type": "string", "description": "key, e.g. Enter"}, "frame": _FRAME, "description": _DESC},
           ["selector", "value", "description"]),
     _tool("hover", "Hover an element to reveal controls that only appear on hover "
           "(row/card action buttons). Use when a control resolves but is reported not visible.",
-          {"selector": _SEL, "fallback_selectors": _FALLBACKS, "description": _DESC},
+          {"selector": _SEL, "fallback_selectors": _FALLBACKS, "frame": _FRAME, "description": _DESC},
           ["selector", "description"]),
     _tool("drag", "Drag one element onto another: a palette item onto the canvas, or a "
           "node's source handle onto another node's target handle to connect them.",
           {"selector": _SEL,
            "to_selector": {"type": "string", "description": "locator for the drop target you saw in the snapshot"},
-           "fallback_selectors": _FALLBACKS, "description": _DESC},
+           "fallback_selectors": _FALLBACKS, "frame": _FRAME, "description": _DESC},
           ["selector", "to_selector", "description"]),
     _tool("read_docs", "Fetch a product documentation page as plain text.",
           {"url": {"type": "string"}}, ["url"]),
@@ -129,6 +131,9 @@ def run_executor(page, ctx: Ctx, intent: str, plan_steps: list[str], notes: str 
     # earns one turn on the SMART model; a single success drops back to FAST.
     consecutive_failures = 0
     failed: dict[tuple[str, str], int] = {}
+    # The `failed` gate blocks a dead selector; this catches the opposite failure
+    # — a lost agent cycling through the same screens with "successful" clicks.
+    succeeded: dict[tuple[str, str], int] = {}
     for _ in range(max_actions or config.EXECUTOR_MAX_ACTIONS):
         _elide_stale_states(messages)
         escalate = consecutive_failures >= 3
@@ -155,6 +160,15 @@ def run_executor(page, ctx: Ctx, intent: str, plan_steps: list[str], notes: str 
                 continue
             result = _execute(page, ctx, tu.name, dict(tu.input), trace, failed)
             consecutive_failures = 0 if result["ok"] else consecutive_failures + 1
+            if result["ok"]:
+                skey = (tu.name, dict(tu.input).get("selector") or "")
+                succeeded[skey] = succeeded.get(skey, 0) + 1
+                if succeeded[skey] >= 3:
+                    result["text"] += (
+                        "\n\nnote: this exact action has now succeeded 3 times this run — "
+                        "if you are cycling through the same screens, step back: re-read the "
+                        "goal, and consider that the content you need may be inside an iframe "
+                        "(see Frame blocks in the snapshot) or behind a different control.")
             results.append({"type": "tool_result", "tool_use_id": tu.id,
                             "content": result["text"], "is_error": not result["ok"]})
         messages.append({"role": "user", "content": results})
@@ -199,6 +213,7 @@ def _execute(page, ctx: Ctx, action: str, inp: dict, trace: list[dict],
         id="", action=action,
         selector=inp.get("selector"),
         to_selector=inp.get("to_selector"),
+        frame=inp.get("frame"),
         value=inp.get("path") if action == "goto" else inp.get("value"),
         field=inp.get("field"),
         description=inp.get("description", ""),
@@ -215,7 +230,7 @@ def _execute(page, ctx: Ctx, action: str, inp: dict, trace: list[dict],
                                if not embeds_value(s, step.value)])[:2]
     trace.append({
         "action": step.action, "selector": step.selector, "fallback_selectors": fallbacks,
-        "to_selector": step.to_selector,
+        "to_selector": step.to_selector, "frame": step.frame,
         "value": None if action == "fill_secret" else step.value,
         "field": step.field, "description": step.description,
         "url_before": url_before, "url_after": page.url,
