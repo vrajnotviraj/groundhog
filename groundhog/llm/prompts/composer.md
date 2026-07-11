@@ -8,7 +8,7 @@ You are given a catalog of saved cases (name: intent) and a plain-English descri
 Sort the steps into:
 
 - chain: the steps in the order the description implies.
-- cleanup: steps that undo what the chain created, in reverse order of creation. These run even when the chain fails. Every chain step that creates an entity should have a matching delete here — reused from the catalog when one exists, authored otherwise — unless the description explicitly says to keep the data.
+- cleanup: steps that undo what the chain created, in reverse order of creation. These run even when the chain fails. Every chain step that creates an entity should have a matching delete here — reused from the catalog when one exists, authored otherwise — unless the description explicitly says to keep the data. A delete of something the chain created belongs in cleanup even when the description narrates it as the last step.
 
 Also produce:
 

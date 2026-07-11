@@ -35,15 +35,26 @@ class DraftCase(BaseModel):
                                         "with {{var}} placeholders; required whenever reuse is empty")
 
 
+class DraftVar(BaseModel):
+    var: str = Field(description="var name as it appears inside {{ }}")
+    value: str = Field(description="default value; embed {{stamp}} for per-run uniqueness "
+                                   "(gh-{{stamp}}), or reference another var ({{name}})")
+
+
 class FlowDraft(BaseModel):
     name: str = Field(description="short kebab-case name for the flow")
-    vars: dict[str, str] = Field(default_factory=dict,
-                                 description="shared {{var}} defaults for every case in the flow, "
-                                             "e.g. {\"name\": \"gh-{{stamp}}\"}")
+    # a list of pairs, not a dict: strict structured-output schemas drop
+    # free-form object keys, which came back as {} no matter the prompt
+    vars: list[DraftVar] = Field(default_factory=list,
+                                 description="shared var defaults — one entry per {{var}} "
+                                             "used by any step's intent")
     chain: list[DraftCase] = Field(description="the steps in order")
     cleanup: list[DraftCase] = Field(default_factory=list,
                                      description="steps that undo what the chain created; "
                                                  "run even when the chain fails")
+
+    def var_map(self) -> dict[str, str]:
+        return {v.var: v.value for v in self.vars}
 
 
 def _decompose(intent: str) -> FlowDraft:
@@ -72,7 +83,7 @@ def _decompose(intent: str) -> FlowDraft:
             raise ValueError("composer produced a step with neither a saved case nor an intent")
         intent_text = next(c.intent for c in cases if c.name == dc.reuse) if dc.reuse else dc.intent
         needed |= set(VAR.findall(intent_text))
-    missing = needed - {"stamp"} - draft.vars.keys()
+    missing = needed - {"stamp"} - draft.var_map().keys()
     if missing:
         raise ValueError(f"composer left {{{{var}}}}s without defaults: {sorted(missing)} — "
                          "rerun `groundhog flow new`")
@@ -96,7 +107,7 @@ def compose_flow(intent: str, name: str | None = None, headless: bool = True) ->
     from groundhog.agent.executor import _derive_name
 
     draft = _decompose(intent)
-    flow = Flow(name=name or draft.name, intent=intent, vars=draft.vars,
+    flow = Flow(name=name or draft.name, intent=intent, vars=draft.var_map(),
                 chain=[dc.reuse or dc.name or _derive_name(dc.intent) for dc in draft.chain],
                 cleanup=[dc.reuse or dc.name or _derive_name(dc.intent) for dc in draft.cleanup])
     chain = list(zip(draft.chain, [fc.case for fc in flow.chain]))

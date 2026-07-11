@@ -163,7 +163,7 @@ def test_decompose_converts_verbatim_duplicate_intents_to_reuse_and_requires_var
     store.save(Case(name="create-template", intent="create a template named {{name}}",
                     steps=[Step(id="s1", action="click", selector="button")]))
     draft = composer.FlowDraft(
-        name="f", vars={"name": "gh-{{stamp}}"},
+        name="f", vars=[composer.DraftVar(var="name", value="gh-{{stamp}}")],
         chain=[composer.DraftCase(name="create-template-2", intent="create a template named {{name}}")])
     monkeypatch.setattr(composer.client, "parse", lambda **kw: draft)
     out = composer._decompose("create a template")
@@ -177,11 +177,11 @@ def test_decompose_converts_verbatim_duplicate_intents_to_reuse_and_requires_var
 
 
 def test_compose_flow_recovers_when_new_case_lands_in_reuse_field(tmp_path, monkeypatch):
-    from groundhog.agent.composer import DraftCase, FlowDraft
+    from groundhog.agent.composer import DraftCase, DraftVar, FlowDraft
 
     _stub_cases(tmp_path, monkeypatch, ["create-template"])
     monkeypatch.setattr(store, "FLOWS_DIR", tmp_path)
-    draft = FlowDraft(name="f", vars={"name": "gh-{{stamp}}"}, chain=[
+    draft = FlowDraft(name="f", vars=[DraftVar(var="name", value="gh-{{stamp}}")], chain=[
         DraftCase(reuse="create-template"),
         DraftCase(reuse="delete-template-v2", intent="delete the template named {{name}}")])
     composer, calls = _composer(monkeypatch, draft)
@@ -192,11 +192,11 @@ def test_compose_flow_recovers_when_new_case_lands_in_reuse_field(tmp_path, monk
 
 
 def test_compose_flow_replays_existing_and_authors_missing_in_order(tmp_path, monkeypatch):
-    from groundhog.agent.composer import DraftCase, FlowDraft
+    from groundhog.agent.composer import DraftCase, DraftVar, FlowDraft
 
     _stub_cases(tmp_path, monkeypatch, ["create-template", "delete-template"])
     monkeypatch.setattr(store, "FLOWS_DIR", tmp_path)
-    draft = FlowDraft(name="template-event", vars={"name": "gh-{{stamp}}"},
+    draft = FlowDraft(name="template-event", vars=[DraftVar(var="name", value="gh-{{stamp}}")],
                       chain=[DraftCase(reuse="create-template"),
                              DraftCase(name="create-event", intent="create an event using template {{name}}")],
                       cleanup=[DraftCase(name="delete-event", intent="delete the event named {{name}}"),
@@ -217,7 +217,7 @@ def test_compose_flow_replays_existing_and_authors_missing_in_order(tmp_path, mo
 def test_compose_flow_failure_runs_existing_cleanup_and_keeps_flow_unsaved(tmp_path, monkeypatch):
     import pytest
 
-    from groundhog.agent.composer import DraftCase, FlowDraft
+    from groundhog.agent.composer import DraftCase, DraftVar, FlowDraft
 
     _stub_cases(tmp_path, monkeypatch, ["create-template", "delete-template"])
     monkeypatch.setattr(store, "FLOWS_DIR", tmp_path)
