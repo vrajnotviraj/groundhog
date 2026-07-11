@@ -3,6 +3,7 @@ recording every executed action with a durable selector — plus the authoring
 orchestration (planner → executor → optimizer → save)."""
 
 import re
+from typing import get_args
 
 from rich.console import Console
 from rich.markup import escape
@@ -12,7 +13,7 @@ from groundhog.browser.actions import Ctx, goto_app, on_picker, perform, recover
 from groundhog.browser.session import Session
 from groundhog.browser.snapshot import fingerprint, snapshot
 from groundhog.browser.selectors import dedupe_ranked, embeds_value, is_weak
-from groundhog.cases.schema import Case, Step
+from groundhog.cases.schema import Action, Case, Step
 from groundhog.cases.store import save
 from groundhog.llm import client
 
@@ -156,6 +157,11 @@ def _execute(page, ctx: Ctx, action: str, inp: dict, trace: list[dict],
         from groundhog.crawl.docs import read_docs_page
 
         return {"ok": True, "text": read_docs_page(inp.get("url", ""))}
+
+    # A hallucinated tool name must bounce back into the loop as a tool error,
+    # not crash the run — authoring is the expensive part of the product.
+    if action not in get_args(Action):
+        return {"ok": False, "text": f"error: unknown tool {action!r} — use only the provided tools"}
 
     # Deterministic gates before touching the browser — a bad selector otherwise
     # costs a full step timeout per attempt.
