@@ -8,9 +8,8 @@
       "action": "hover",
       "selector": "a[href*=\"{{name}}\"]",
       "fallback_selectors": [],
-      "to_selector": null,
+      "frame": null,
       "value": null,
-      "field": null,
       "description": "Hover the {{name}} template card to reveal its actions",
       "expects": null,
       "page_fingerprint": null,
@@ -23,9 +22,8 @@
       "fallback_selectors": [
         "[href*=\"{{name}}\"] >> role=button[name=\"more\"]"
       ],
-      "to_selector": null,
+      "frame": null,
       "value": null,
-      "field": null,
       "description": "Open the row actions menu for the {{name}} template",
       "expects": null,
       "page_fingerprint": null,
@@ -36,9 +34,8 @@
       "action": "click",
       "selector": "role=menuitem[name=\"Delete\"]",
       "fallback_selectors": [],
-      "to_selector": null,
+      "frame": null,
       "value": null,
-      "field": null,
       "description": "Choose Delete from the row actions menu",
       "expects": {
         "kind": "text_visible",
@@ -54,9 +51,8 @@
       "fallback_selectors": [
         "[placeholder=\"{{name}}\"]"
       ],
-      "to_selector": null,
+      "frame": null,
       "value": "{{name}}",
-      "field": null,
       "description": "Type the template name to arm the delete confirmation",
       "expects": null,
       "page_fingerprint": null,
@@ -67,9 +63,8 @@
       "action": "click",
       "selector": "role=button[name=\"Delete\"]",
       "fallback_selectors": [],
-      "to_selector": null,
+      "frame": null,
       "value": null,
-      "field": null,
       "description": "Confirm the deletion in the dialog",
       "expects": null,
       "page_fingerprint": null,
@@ -79,12 +74,12 @@
   "assertions": [
     {
       "assertion": "the template named {{name}} no longer appears in the templates list",
-      "mode": "llm"
+      "mode": "jev"
     }
   ],
   "meta": {
     "created_at": "2026-07-11T12:15:00+00:00",
-    "runs": 4,
+    "runs": 8,
     "heals": []
   }
 }

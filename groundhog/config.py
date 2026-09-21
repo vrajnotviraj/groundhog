@@ -1,11 +1,12 @@
-"""Env-backed configuration: model slots, budgets, credentials.
+"""Env-backed configuration: credentials, model slots, budgets, paths.
 
-Only credential VALUES live in env — login flows are recorded as steps that
-reference a field name ("user"/"pass"), so secrets never reach the LLM or disk.
+Credential values live in .env and never reach a model, a snapshot or a case file.
 """
 
 import os
+import re
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from dotenv import load_dotenv
 
@@ -16,36 +17,46 @@ BASE_URL = os.environ.get("BASE_URL", "https://app.example.com")
 LOGIN_USER = os.environ.get("LOGIN_USER", "")
 LOGIN_PASS = os.environ.get("LOGIN_PASS", "")
 LOGIN_WORKSPACE = os.environ.get("LOGIN_WORKSPACE", "")
+# Workspace id to open directly after login; when empty the picker is used via LOGIN_WORKSPACE.
+WORKSPACE_ID = os.environ.get("WORKSPACE_ID", "")
 
+# Jev makes every browser decision; required for new/heal/judge.
+TYPESAFE_API_KEY = os.environ.get("TYPESAFE_API_KEY", "")
+TYPESAFE_MODEL = os.environ.get("TYPESAFE_MODEL", "jev-latest")
+
+# Optional: only writes field values the intent doesn't spell out, and composes flows.
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
-# SMART plans and optimizes (few calls, hard thinking); FAST drives per-step
-# decisions, healing, judging, crawl observation (many calls, cheap).
-SMART_MODEL = os.environ.get("SMART_MODEL", "claude-sonnet-5")
-FAST_MODEL = os.environ.get("FAST_MODEL", "claude-haiku-4-5")
-
-NEO4J_URI = os.environ.get("NEO4J_URI", "bolt://localhost:7687")
-NEO4J_USER = os.environ.get("NEO4J_USER", "neo4j")
-NEO4J_PASS = os.environ.get("NEO4J_PASS", "groundhog")
+ANTHROPIC_MODEL = os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-5")
 
 HEADLESS = os.environ.get("HEADLESS", "1") == "1"
 # Bounded settle: networkidle may never fire on an app with websockets/polling.
-SETTLE_TIMEOUT_MS = int(os.environ.get("SETTLE_TIMEOUT_MS", "1500"))
+SETTLE_TIMEOUT_MS = int(os.environ.get("SETTLE_TIMEOUT_MS", "1000"))
 STEP_TIMEOUT_MS = int(os.environ.get("STEP_TIMEOUT_MS", "10000"))
+# First page load of a session; a slow dev environment needs more than a step.
+PAGE_LOAD_MS = int(os.environ.get("PAGE_LOAD_MS", "45000"))
 # Once an element's existence is established, actions and confirmations should be
 # quick — a short per-attempt budget keeps the fallback walk from multiplying the
 # full timeout, and fails a selector that matches nothing fast instead of at 8s.
 ACTION_PROBE_MS = int(os.environ.get("ACTION_PROBE_MS", "2000"))
 # Poll interval for the cheap existence waits (readiness + fail-fast probe).
 READINESS_POLL_MS = int(os.environ.get("READINESS_POLL_MS", "250"))
-EXECUTOR_MAX_ACTIONS = int(os.environ.get("EXECUTOR_MAX_ACTIONS", "25"))
+EXECUTOR_MAX_ACTIONS = int(os.environ.get("EXECUTOR_MAX_ACTIONS", "40"))
 
-CRAWL_MAX_PAGES = int(os.environ.get("CRAWL_MAX_PAGES", "40"))
-CRAWL_MAX_DEPTH = int(os.environ.get("CRAWL_MAX_DEPTH", "4"))
-
-DOCS_URL = os.environ.get("DOCS_URL", "https://docs.example.com")
+# Noul probability a "jev" assertion needs to pass; also the DONE gate.
+JUDGE_THRESHOLD = float(os.environ.get("JUDGE_THRESHOLD", "0.6"))
+# Target probability a heal needs before its selector is accepted.
+HEAL_THRESHOLD = float(os.environ.get("HEAL_THRESHOLD", "0.6"))
 
 ROOT = Path.cwd()
 CASES_DIR = ROOT / "cases"
 FLOWS_DIR = ROOT / "flows"
 RUNS_DIR = ROOT / "runs"
 AUTH_DIR = ROOT / ".auth"
+
+# Workspace ids are per-install, so they must never land in a saved case.
+WS_ID = re.compile(r"/FY[A-Z0-9]{6,}(?=/|$)")
+
+
+def ws_path(url: str) -> str:
+    """Path of a URL or path, workspace segment replaced by /:ws."""
+    return WS_ID.sub("/:ws", urlsplit(url).path or "/")

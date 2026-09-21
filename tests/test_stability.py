@@ -1,14 +1,11 @@
-import json
 from types import SimpleNamespace
 
 import pytest
-import typer
 from playwright.sync_api import TimeoutError as PWTimeout
 
 from groundhog import config
 from groundhog.browser import actions
 from groundhog.cases.schema import Expect, Step
-
 
 # --- fake page objects: exercise the browser layer without a real browser ---
 # A locator "resolves" when its count is > 0; a click/fill waits (bounded by its
@@ -38,15 +35,14 @@ class _Loc:
     def first(self):
         return self
 
+    def filter(self, visible=None):
+        return self
+
     def _count(self):
         v = self.page.counts.get(self.selector, 0)
         return v() if callable(v) else v
 
     count = _count
-
-    def aria_snapshot(self):
-        self.page.aria_calls += 1
-        return self.page.aria
 
     def wait_for(self, state=None, timeout=None):
         self.page.wait_fors.append((self.selector, state))
@@ -70,6 +66,7 @@ class _Loc:
 
     def fill(self, value, timeout=None):
         self._act("fill", timeout)
+        self.page.fills.append((self.selector, value))
 
     def hover(self, timeout=None):
         self._act("hover", timeout)
@@ -94,17 +91,35 @@ class _Page:
         self.url = url
         self.aria = aria
         self.counts = counts or {}
-        self.aria_calls = 0
+        self.observes = 0
         self.actions = []       # (kind, selector, timeout) for every action attempt
+        self.fills = []         # (selector, value) for every fill
         self.wait_fors = []     # (selector, state) for every wait_for
         self.load_states = []
         self.intercepts = {}    # (kind, selector) -> callable (may raise / mutate)
         self.slept = 0
         self.polls = 0
         self.frame_locators = []  # frame selectors passed to frame_locator()
+        self.gotos = []         # every url passed to goto()
+        self.evaluates = []     # (js, arg) for every evaluate()
+        self.eval_result = None  # what evaluate() hands back
 
     def locator(self, selector):
         return _Loc(self, selector)
+
+    def get_by_role(self, role, name=None, exact=False):
+        return _Loc(self, f'role={role}[name="{name}"]')
+
+    def goto(self, url, timeout=None):
+        self.gotos.append(url)
+        self.url = url
+        hook = self.intercepts.get(("goto", url))
+        if hook:
+            hook()
+
+    def evaluate(self, js, arg=None):
+        self.evaluates.append((js, arg))
+        return self.eval_result
 
     def frame_locator(self, selector):
         self.frame_locators.append(selector)
@@ -119,10 +134,18 @@ class _Page:
         self.load_states.append(state)
 
 
+def _observe(page):
+    """Stand-in for the real snapshot: the fake page's aria string IS its
+    fingerprint, so a test changes the page by changing page.aria."""
+    page.observes += 1
+    return SimpleNamespace(fingerprint=page.aria, url=page.url)
+
+
 def _mk(monkeypatch, **kw):
     clock = _Clock()
     page = _Page(clock, **kw)
     monkeypatch.setattr(actions, "time", clock)
+    monkeypatch.setattr(actions, "observe", _observe)
     return page
 
 
@@ -197,7 +220,7 @@ def test_step_with_frame_resolves_locator_inside_the_iframe(monkeypatch):
 def test_exists_but_not_actionable_click_gets_a_next_strategy_hint(monkeypatch):
     # A label-wrapped Ant checkbox: it passes the existence probe but every click
     # times out. The raw Playwright timeout must gain the actionable hint so the
-    # agent/healer switches strategy instead of retrying the same dead selector.
+    # heal step switches strategy instead of retrying the same dead selector.
     sel = 'role=checkbox[name="SMS"]'
     page = _mk(monkeypatch, counts={sel: 1})
     page.intercepts[("click", sel)] = lambda: (_ for _ in ()).throw(
@@ -208,14 +231,14 @@ def test_exists_but_not_actionable_click_gets_a_next_strategy_hint(monkeypatch):
     assert "Timeout 10000ms exceeded" in out.error  # original first line kept
 
 
-def test_run_step_snapshots_the_page_once(monkeypatch):
-    # The drift gate and the no-op baseline share one aria_snapshot instead of
+def test_run_step_observes_the_page_once(monkeypatch):
+    # The drift gate and the no-op baseline share one observe() instead of
     # computing it back-to-back twice.
     page = _mk(monkeypatch, counts={"#save": 1})
     step = Step(action="click", selector="#save", page_fingerprint="sha256:abc",
                 expects=Expect(kind="url_contains", value="home"))
     actions.run_step(page, step, actions.Ctx())
-    assert page.aria_calls == 1
+    assert page.observes == 1
 
 
 def test_settle_waits_for_loading_indicators_and_never_throws(monkeypatch):
@@ -244,6 +267,7 @@ def test_authenticated_waits_out_the_login_form_render_race(monkeypatch):
     url = cfg.BASE_URL
     s, page = _session_with(monkeypatch, url, lambda: 1 if page.polls >= 1 else 0)
     assert s._authenticated() is False
+    assert page.polls == 1  # it saw the field on the first poll, it did not time out
 
 
 def test_authenticated_is_cheap_when_state_is_already_obvious(monkeypatch):
@@ -269,84 +293,121 @@ def test_storage_state_falls_back_on_missing_or_corrupt_json(tmp_path, monkeypat
     assert session._storage_state() == str(state)
 
 
-def test_llm_client_uses_sdk_native_retries(monkeypatch):
-    from groundhog.llm import client
+def _login_session(monkeypatch, tmp_path, page):
+    from groundhog.browser import session
 
-    monkeypatch.setattr(client, "_client", None)
-    c = client._anthropic()
-    assert c.max_retries == 5
-
-
-def test_partial_trace_dump_writes_replayable_json(tmp_path, monkeypatch):
-    from groundhog import config
-    from groundhog.agent import executor
-
-    monkeypatch.setattr(config, "RUNS_DIR", tmp_path)
-    trace = [{"action": "click", "selector": "#save", "description": "save"}]
-    path = executor._dump_partial("long-flow", trace)
-    assert "long-flow-partial-" in path
-    assert json.loads((tmp_path / path.rsplit("/", 1)[1]).read_text()) == trace
+    monkeypatch.setattr(config, "AUTH_DIR", tmp_path)
+    monkeypatch.setattr(config, "BASE_URL", "https://app.example.com")
+    monkeypatch.setattr(config, "LOGIN_USER", "you@example.com")
+    monkeypatch.setattr(config, "LOGIN_PASS", "placeholder")
+    monkeypatch.setattr(config, "WORKSPACE_ID", "")
+    s = session.Session.__new__(session.Session)
+    s.ws = ""
+    s.page = page
+    s.cookies = []
+    s._context = SimpleNamespace(storage_state=lambda path: None,
+                                 add_cookies=s.cookies.extend)
+    return session, s
 
 
-def test_run_executor_records_into_caller_supplied_trace(monkeypatch):
-    from groundhog.agent import executor
-
-    # A response with no tool calls: after two nudges the loop gives up, so we
-    # exercise the loop end-to-end without a browser or an API key.
-    monkeypatch.setattr(executor.client, "message",
-                        lambda *a, **k: SimpleNamespace(content=[]))
-    monkeypatch.setattr(executor, "snapshot", lambda page: "- button 'x'")
-    page = SimpleNamespace(url="/home")
-    trace: list[dict] = []
-    got, done = executor.run_executor(page, ctx=None, intent="x", plan_steps=[],
-                                      max_actions=5, trace=trace)
-    assert got is trace  # the caller's list survives a mid-loop crash
-    assert done is None
+def _lands_on(page, url):
+    """Intercept for the post-login goto: only the navigation after the login
+    call lands on a session, so the first goto still finds a logged-out app."""
+    return lambda: page.evaluates and (
+        setattr(page, "url", url),
+        page.counts.__setitem__('input[type="password"]', 0))
 
 
-def test_crawl_keyboard_interrupt_keeps_partial_stats(monkeypatch):
-    from groundhog.crawl import crawler
+def test_login_calls_the_login_api_and_captures_the_workspace(monkeypatch, tmp_path):
+    page = _mk(monkeypatch, url="https://app.example.com/login",
+               counts={'input[type="password"]': 1})
+    session, s = _login_session(monkeypatch, tmp_path, page)
+    page.eval_result = {"status": 200, "text": '{"status":"ok"}'}
+    page.intercepts[("goto", "https://app.example.com")] = _lands_on(
+        page, "https://app.example.com/FYABCDEF/home")
 
-    class FakeSession:
-        ws = "FY1"
-        page = None
+    s.ensure_logged_in()
 
-        def __init__(self, headless):
-            pass
-
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *exc):
-            return False
-
-        def ensure_logged_in(self):
-            pass
-
-    def interrupt(page, url):
-        raise KeyboardInterrupt
-
-    monkeypatch.setattr(crawler, "Session", FakeSession)
-    monkeypatch.setattr(crawler, "goto_app", interrupt)
-    stats = crawler.crawl(scope="/templates", max_pages=3)
-    assert stats == {"pages": 0, "elements": 0, "transitions": 0}
+    js, arg = page.evaluates[0]
+    assert js is session.SECURE_LOGIN_JS
+    assert arg == {"email": "you@example.com", "password": "placeholder"}
+    # The SPA only reads the session as live with this marker cookie beside the
+    # auth cookie the API set.
+    assert s.cookies == [{"name": "userId", "value": "true",
+                          "domain": "app.example.com", "path": "/"}]
+    assert page.fills == []  # no login form is driven
+    assert s.ws == "FYABCDEF"
 
 
-def test_need_llm_exits_when_key_missing(monkeypatch):
-    from groundhog import cli, config
+def test_login_failure_names_the_env_vars_and_never_the_password(monkeypatch, tmp_path):
+    # The API says why; the value that produced the error must not be echoed.
+    page = _mk(monkeypatch, url="https://app.example.com/login",
+               counts={'input[type="password"]': 1})
+    session, s = _login_session(monkeypatch, tmp_path, page)
+    page.eval_result = {"status": 400,
+                        "text": '{"status":"error","_message":"Email or Password is invalid"}'}
+    with pytest.raises(RuntimeError) as err:
+        s.ensure_logged_in()
+    assert "Email or Password is invalid" in str(err.value)
+    assert "LOGIN_USER / LOGIN_PASS in .env" in str(err.value)
+    assert "placeholder" not in str(err.value)
 
-    monkeypatch.setattr(config, "ANTHROPIC_API_KEY", "")
-    with pytest.raises(typer.Exit):
-        cli._need_llm()
+
+def test_a_configured_workspace_id_is_opened_directly(monkeypatch, tmp_path):
+    # With WORKSPACE_ID set the picker is skipped, so the login also works when
+    # the picker is slow or the workspace name is ambiguous.
+    page = _mk(monkeypatch, url="https://app.example.com/login",
+               counts={'input[type="password"]': 1})
+    session, s = _login_session(monkeypatch, tmp_path, page)
+    monkeypatch.setattr(config, "WORKSPACE_ID", "FYABCDEF")
+    page.eval_result = {"status": 200, "text": '{"status":"ok"}'}
+    page.intercepts[("goto", "https://app.example.com")] = _lands_on(
+        page, "https://app.example.com/workspaces")
+
+    s.ensure_logged_in()
+
+    assert page.gotos[-1] == "https://app.example.com/FYABCDEF/home"
+    assert s.ws == "FYABCDEF"
 
 
-def test_need_graph_exits_when_neo4j_down(monkeypatch):
-    from groundhog import cli
-    from groundhog.graph import store
+def test_login_without_a_workspace_names_the_env_var(monkeypatch, tmp_path):
+    # The picker link never leads anywhere: a workspace-less "success" would cache
+    # state and build every later /:ws path with an empty id.
+    link = 'role=link[name="Your Workspace"]'
+    page = _mk(monkeypatch, url="https://app.example.com/login",
+               counts={'input[type="password"]': 1, link: 1})
+    session, s = _login_session(monkeypatch, tmp_path, page)
+    page.eval_result = {"status": 200, "text": '{"status":"ok"}'}
+    page.intercepts[("goto", "https://app.example.com")] = _lands_on(
+        page, "https://app.example.com/workspaces")
+    monkeypatch.setattr(config, "LOGIN_WORKSPACE", "Your Workspace")
+    monkeypatch.setattr(config, "STEP_TIMEOUT_MS", 20)
+    with pytest.raises(RuntimeError, match="LOGIN_WORKSPACE"):
+        s.ensure_logged_in()
 
-    def down():
-        raise ConnectionError("refused")
 
-    monkeypatch.setattr(store, "driver", down)
-    with pytest.raises(typer.Exit):
-        cli._need_graph()
+def test_a_login_page_is_never_read_as_authenticated(monkeypatch):
+    # The password field can be a step away, so "no password input" is not proof
+    # of a session; the login path is.
+    from groundhog import config as cfg
+
+    s, page = _session_with(monkeypatch, f"{cfg.BASE_URL}/login", 0)
+    assert s._authenticated() is False and page.polls == 0
+
+
+def test_missing_credentials_fail_before_calling_the_login_api(monkeypatch, tmp_path):
+    page = _mk(monkeypatch, url="https://app.example.com/login",
+               counts={'input[type="password"]': 1})
+    session, s = _login_session(monkeypatch, tmp_path, page)
+    monkeypatch.setattr(config, "LOGIN_PASS", "")
+    with pytest.raises(RuntimeError, match="are not set"):
+        s.ensure_logged_in()
+    assert page.evaluates == []
+
+
+def test_focusing_click_on_a_field_is_not_a_no_op_failure(monkeypatch):
+    # Clicking a search box before typing changes nothing visible; that is fine.
+    sel = '[placeholder="Search Templates"]'
+    page = _mk(monkeypatch, counts={sel: 1})
+    out = actions.run_step(page, Step(action="click", selector=sel), actions.Ctx())
+    assert out.ok

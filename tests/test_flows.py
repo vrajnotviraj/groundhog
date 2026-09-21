@@ -1,3 +1,5 @@
+import pytest
+
 from groundhog.cases import store
 from groundhog.cases.schema import Case, Flow, FlowCase, Step
 from groundhog.runner import flow as flow_runner
@@ -166,8 +168,8 @@ def _composer(monkeypatch, draft, run_outcomes=None, authored=None):
         if authored is not None:
             authored.append(name)
 
-    import groundhog.agent.executor as executor
-    monkeypatch.setattr(executor, "author_case", fake_author)
+    import groundhog.agent.author as author
+    monkeypatch.setattr(author, "author_case", fake_author)
     return composer, calls
 
 
@@ -247,7 +249,7 @@ def test_compose_flow_replays_existing_and_authors_missing_in_order(tmp_path, mo
 def test_compose_flow_failure_runs_existing_cleanup_and_keeps_flow_unsaved(tmp_path, monkeypatch):
     import pytest
 
-    from groundhog.agent.composer import DraftCase, DraftVar, FlowDraft
+    from groundhog.agent.composer import DraftCase, FlowDraft
 
     _stub_cases(tmp_path, monkeypatch, ["create-template", "delete-template"])
     monkeypatch.setattr(store, "FLOWS_DIR", tmp_path)
@@ -262,3 +264,15 @@ def test_compose_flow_failure_runs_existing_cleanup_and_keeps_flow_unsaved(tmp_p
     assert [(kind, name) for kind, name, _ in calls] == [
         ("replay", "create-template"), ("replay", "delete-template")]
     assert not (tmp_path / "template-event.json").exists()
+
+
+def test_missing_anthropic_key_is_a_clear_runtime_error(monkeypatch):
+    # cli wraps `flow new` in `except RuntimeError`, so the composer must not
+    # surface a raw SDK auth error when the optional key is unset.
+    from groundhog import config
+    from groundhog.llm import client
+
+    monkeypatch.setattr(config, "ANTHROPIC_API_KEY", "")
+    monkeypatch.setattr(client, "_client", None)
+    with pytest.raises(RuntimeError, match="ANTHROPIC_API_KEY is not set"):
+        client.parse(user="x", output_model=None, system="s")

@@ -8,11 +8,11 @@
       "action": "click",
       "selector": "button:has-text(\"Create\")",
       "fallback_selectors": [],
+      "frame": null,
       "value": null,
-      "field": null,
       "description": "Click the Create button to start creating a new omni-channel route",
       "expects": null,
-      "page_fingerprint": "sha256:85fc8a2dfba72a99",
+      "page_fingerprint": null,
       "healed_count": 0
     },
     {
@@ -20,11 +20,11 @@
       "action": "fill",
       "selector": "[placeholder=\"Enter Name\"]",
       "fallback_selectors": [],
+      "frame": null,
       "value": "{{name}}",
-      "field": null,
       "description": "Fill in the route name as {{name}}",
       "expects": null,
-      "page_fingerprint": "sha256:4d1c1245cdf5df66",
+      "page_fingerprint": null,
       "healed_count": 0
     },
     {
@@ -32,11 +32,11 @@
       "action": "click",
       "selector": "button:has-text(\"Submit\")",
       "fallback_selectors": [],
+      "frame": null,
       "value": null,
-      "field": null,
       "description": "Click Submit to create the omni-channel route {{name}}",
       "expects": null,
-      "page_fingerprint": "sha256:cd0bbb237bdc480b",
+      "page_fingerprint": null,
       "healed_count": 0
     },
     {
@@ -44,8 +44,8 @@
       "action": "goto",
       "selector": null,
       "fallback_selectors": [],
+      "frame": null,
       "value": "/:ws/templates",
-      "field": null,
       "description": "Navigate to the templates page",
       "expects": {
         "kind": "url_contains",
@@ -59,11 +59,11 @@
       "action": "click",
       "selector": "button:has-text(\"Create\")",
       "fallback_selectors": [],
+      "frame": null,
       "value": null,
-      "field": null,
       "description": "Click Create to start creating a new template",
       "expects": null,
-      "page_fingerprint": "sha256:85fc8a2dfba72a99",
+      "page_fingerprint": null,
       "healed_count": 0
     },
     {
@@ -71,11 +71,11 @@
       "action": "fill",
       "selector": "[placeholder=\"Enter Name\"]",
       "fallback_selectors": [],
+      "frame": null,
       "value": "{{name}}",
-      "field": null,
       "description": "Fill in the template name as {{name}}",
       "expects": null,
-      "page_fingerprint": "sha256:4d1c1245cdf5df66",
+      "page_fingerprint": null,
       "healed_count": 0
     },
     {
@@ -83,11 +83,11 @@
       "action": "click",
       "selector": "button:has-text(\"Submit\")",
       "fallback_selectors": [],
+      "frame": null,
       "value": null,
-      "field": null,
       "description": "Click Submit to create the SMS template {{name}}",
       "expects": null,
-      "page_fingerprint": "sha256:cd0bbb237bdc480b",
+      "page_fingerprint": null,
       "healed_count": 0
     },
     {
@@ -95,8 +95,8 @@
       "action": "goto",
       "selector": null,
       "fallback_selectors": [],
+      "frame": null,
       "value": "/:ws/templates/{{name}}/v1",
-      "field": null,
       "description": "Navigate directly to the {{name}} template editor",
       "expects": {
         "kind": "url_contains",
@@ -110,11 +110,11 @@
       "action": "click",
       "selector": "role=checkbox[name=\"SMS\"]",
       "fallback_selectors": [],
+      "frame": null,
       "value": null,
-      "field": null,
       "description": "Select SMS channel for the template",
       "expects": null,
-      "page_fingerprint": "sha256:fa58f200ab3f9850",
+      "page_fingerprint": null,
       "healed_count": 0
     },
     {
@@ -122,11 +122,11 @@
       "action": "click",
       "selector": "button:has-text(\"Create\")",
       "fallback_selectors": [],
+      "frame": null,
       "value": null,
-      "field": null,
       "description": "Click Create to proceed with the SMS template",
       "expects": null,
-      "page_fingerprint": "sha256:85fc8a2dfba72a99",
+      "page_fingerprint": null,
       "healed_count": 0
     },
     {
@@ -134,11 +134,11 @@
       "action": "click",
       "selector": "role=checkbox[name=\"Not Applicable\"]",
       "fallback_selectors": [],
+      "frame": null,
       "value": null,
-      "field": null,
       "description": "Check the Not Applicable checkbox to use the native SMS template",
       "expects": null,
-      "page_fingerprint": "sha256:7b3acec32770bfa1",
+      "page_fingerprint": null,
       "healed_count": 0
     },
     {
@@ -146,11 +146,11 @@
       "action": "fill",
       "selector": "[placeholder=\"Start typing to add your SMS content. You can add placeholders within {{ }}\"]",
       "fallback_selectors": [],
+      "frame": null,
       "value": "Hello {{name}}, your verification code is {{code}}. Please do not share this with anyone.",
-      "field": null,
       "description": "Fill in the SMS message content",
       "expects": null,
-      "page_fingerprint": "sha256:6d45c1003ecb9fe0",
+      "page_fingerprint": null,
       "healed_count": 0
     },
     {
@@ -158,11 +158,11 @@
       "action": "click",
       "selector": "button:has-text(\"Save\")",
       "fallback_selectors": [],
+      "frame": null,
       "value": null,
-      "field": null,
       "description": "Save the SMS template content",
       "expects": null,
-      "page_fingerprint": "sha256:ffa977adf7eb03a0",
+      "page_fingerprint": null,
       "healed_count": 0
     },
     {
@@ -170,8 +170,8 @@
       "action": "goto",
       "selector": null,
       "fallback_selectors": [],
+      "frame": null,
       "value": "/:ws/notification-events",
-      "field": null,
       "description": "Navigate to the notification events page to create the notification event",
       "expects": {
         "kind": "url_contains",
@@ -185,11 +185,11 @@
       "action": "click",
       "selector": "button:has-text(\"Create\")",
       "fallback_selectors": [],
+      "frame": null,
       "value": null,
-      "field": null,
       "description": "Click Create to start creating a new notification event",
       "expects": null,
-      "page_fingerprint": "sha256:85fc8a2dfba72a99",
+      "page_fingerprint": null,
       "healed_count": 0
     },
     {
@@ -197,11 +197,11 @@
       "action": "fill",
       "selector": "[placeholder=\"Enter Name\"]",
       "fallback_selectors": [],
+      "frame": null,
       "value": "{{name}}",
-      "field": null,
       "description": "Fill in the notification event name as {{name}}",
       "expects": null,
-      "page_fingerprint": "sha256:4d1c1245cdf5df66",
+      "page_fingerprint": null,
       "healed_count": 0
     },
     {
@@ -209,11 +209,11 @@
       "action": "click",
       "selector": "role=combobox",
       "fallback_selectors": [],
+      "frame": null,
       "value": null,
-      "field": null,
       "description": "Click on the Type combobox to select Transactional",
       "expects": null,
-      "page_fingerprint": "sha256:09828968dd265840",
+      "page_fingerprint": null,
       "healed_count": 0
     },
     {
@@ -221,11 +221,11 @@
       "action": "click",
       "selector": "role=option[name=\"Transactional\"]",
       "fallback_selectors": [],
+      "frame": null,
       "value": null,
-      "field": null,
       "description": "Select Transactional as the event type",
       "expects": null,
-      "page_fingerprint": "sha256:b1411ef547aa7a2d",
+      "page_fingerprint": null,
       "healed_count": 0
     },
     {
@@ -233,11 +233,11 @@
       "action": "click",
       "selector": "button:has-text(\"Submit\")",
       "fallback_selectors": [],
+      "frame": null,
       "value": null,
-      "field": null,
       "description": "Click Submit to create the notification event",
       "expects": null,
-      "page_fingerprint": "sha256:cd0bbb237bdc480b",
+      "page_fingerprint": null,
       "healed_count": 0
     },
     {
@@ -245,8 +245,8 @@
       "action": "goto",
       "selector": null,
       "fallback_selectors": [],
+      "frame": null,
       "value": "/:ws/notification-events/{{name}}/v1",
-      "field": null,
       "description": "Navigate directly to the {{name}} notification event editor",
       "expects": {
         "kind": "url_contains",
@@ -260,11 +260,11 @@
       "action": "click",
       "selector": "role=combobox[name=\"Select Template\"]",
       "fallback_selectors": [],
+      "frame": null,
       "value": null,
-      "field": null,
       "description": "Click on the Select Template combobox to choose {{name}}",
       "expects": null,
-      "page_fingerprint": "sha256:a7393173bf0aa8f2",
+      "page_fingerprint": null,
       "healed_count": 0
     },
     {
@@ -272,11 +272,11 @@
       "action": "click",
       "selector": "role=option[name*=\"{{name}} Has test version\"]",
       "fallback_selectors": [],
+      "frame": null,
       "value": null,
-      "field": null,
       "description": "Click on the {{name}} template option to select it",
       "expects": null,
-      "page_fingerprint": "sha256:1ee4325d9fe45148",
+      "page_fingerprint": null,
       "healed_count": 0
     },
     {
@@ -284,11 +284,11 @@
       "action": "click",
       "selector": "role=region >> role=combobox",
       "fallback_selectors": [],
+      "frame": null,
       "value": null,
-      "field": null,
       "description": "Click on the Select Rule combobox in the Route/Provider section",
       "expects": null,
-      "page_fingerprint": "sha256:473d24beb700f2f9",
+      "page_fingerprint": null,
       "healed_count": 0
     },
     {
@@ -296,11 +296,11 @@
       "action": "click",
       "selector": "role=option[name*=\"Omni-channel route\"]",
       "fallback_selectors": [],
+      "frame": null,
       "value": null,
-      "field": null,
       "description": "Select the Omni-channel route option",
       "expects": null,
-      "page_fingerprint": "sha256:76fa7ee2d64c724e",
+      "page_fingerprint": null,
       "healed_count": 0
     },
     {
@@ -308,11 +308,11 @@
       "action": "click",
       "selector": "role=combobox[name=\"Select Omni-Channel Route\"]",
       "fallback_selectors": [],
+      "frame": null,
       "value": null,
-      "field": null,
       "description": "Click on the Select Omni-Channel Route combobox to choose {{name}}",
       "expects": null,
-      "page_fingerprint": "sha256:ae7b15326a084318",
+      "page_fingerprint": null,
       "healed_count": 0
     },
     {
@@ -320,11 +320,11 @@
       "action": "click",
       "selector": "role=option[name*=\"{{name}}\"]",
       "fallback_selectors": [],
+      "frame": null,
       "value": null,
-      "field": null,
       "description": "Click on the {{name}} omni-channel route option to select it",
       "expects": null,
-      "page_fingerprint": "sha256:5b79238c658a696f",
+      "page_fingerprint": null,
       "healed_count": 0
     },
     {
@@ -332,11 +332,11 @@
       "action": "click",
       "selector": "button:has-text(\"Save\")",
       "fallback_selectors": [],
+      "frame": null,
       "value": null,
-      "field": null,
       "description": "Click Save to save the notification event with template and route mapping",
       "expects": null,
-      "page_fingerprint": "sha256:ffa977adf7eb03a0",
+      "page_fingerprint": null,
       "healed_count": 0
     }
   ],
@@ -346,13 +346,13 @@
       "mode": "deterministic"
     },
     {
-      "assertion": "the notification event named {{name}} is of type Transactional, has the template {{name}} selected, and is mapped to the omni-channel route {{name}}",
-      "mode": "llm"
+      "assertion": "the notification event named {{name}} has the template {{name}} selected and is mapped to the omni-channel route {{name}}",
+      "mode": "jev"
     }
   ],
   "meta": {
     "created_at": "2026-07-04T13:32:42.763735+00:00",
-    "runs": 5,
+    "runs": 8,
     "heals": []
   }
 }

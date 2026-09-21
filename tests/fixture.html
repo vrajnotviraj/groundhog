@@ -1,0 +1,49 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Fixture App</title>
+  <style>
+    body { font: 14px sans-serif; margin: 8px; }
+    .ant-checkbox input { position: absolute; opacity: 0; width: 14px; height: 14px; }
+    .card { display: block; border: 1px solid #ccc; padding: 4px; width: 300px; }
+    #dialog { border: 1px solid #333; padding: 4px; }
+    .below { margin-top: 1600px; }
+    iframe { width: 200px; height: 60px; }
+  </style>
+</head>
+<body>
+  <button>Accept All</button>
+
+  <button data-testid="create-tpl">Create Template</button>
+  <input id="tpl-name" placeholder="Enter Name">
+  <input type="password" id="pw" placeholder="Password">
+
+  <div>
+    <button>Dup</button>
+    <button>Dup</button>
+  </div>
+
+  <div id="dialog" role="dialog" aria-label="Confirm">
+    <button>Delete</button>
+  </div>
+  <button>Delete</button>
+
+  <label class="ant-checkbox"><input type="checkbox" checked><span>SMS</span></label>
+  <label class="ant-checkbox"><input type="checkbox"><span>SMS Fallback</span></label>
+
+  <a class="card" href="/FYABCDEF/templates/gh-1/v1">gh-1 Has test version
+    <button aria-label="more">...</button></a>
+  <a class="card" href="/FYABCDEF/templates/gh-2/v1">gh-2 Has test version
+    <button aria-label="more">...</button></a>
+
+  <div role="alert">Toast saved successfully</div>
+
+  <iframe name="editor" srcdoc="<button>Inside Frame</button>"></iframe>
+
+  <div class="below">
+    <p>Below the fold paragraph</p>
+    <button>Far Below</button>
+  </div>
+</body>
+</html>

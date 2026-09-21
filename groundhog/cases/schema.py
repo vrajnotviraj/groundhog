@@ -4,7 +4,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
 
-Action = Literal["goto", "click", "fill", "fill_secret", "select", "press", "wait_for", "drag", "hover"]
+Action = Literal["goto", "click", "fill", "press", "hover"]
 
 
 class Expect(BaseModel):
@@ -21,17 +21,12 @@ class Step(BaseModel):
     # Ranked alternates captured at authoring time, so most drift heals with
     # zero LLM calls — just walk the list.
     fallback_selectors: list[str] = Field(default_factory=list)
-    # Drop target for drag; healing never rewrites it.
-    to_selector: str | None = None
-    # Playwright iframe selector; when set, this step's locators resolve inside
-    # that frame (the top-document aria tree stops at the iframe boundary).
+    # Playwright iframe selector; when set, this step's locators resolve inside that frame.
     frame: str | None = None
     value: str | None = None
-    # fill_secret stores only the field name; the value is injected from env.
-    field: Literal["user", "pass"] | None = None
     description: str = ""
     expects: Expect | None = None
-    # Hash of the pruned snapshot seen at authoring time — the replay drift gate.
+    # snapshot.observe(page).fingerprint at authoring time; a mismatch is reported as drift.
     page_fingerprint: str | None = None
     healed_count: int = 0
 
@@ -39,8 +34,8 @@ class Step(BaseModel):
 class Assertion(BaseModel):
     assertion: str
     # deterministic: "url_contains:/x" / "text_visible:X" checked directly.
-    # llm: plain English judged against the final snapshot.
-    mode: Literal["deterministic", "llm"] = "llm"
+    # jev: plain English judged against the final snapshot by Jev.
+    mode: Literal["deterministic", "jev"] = "jev"
 
 
 class Heal(BaseModel):

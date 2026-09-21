@@ -4,13 +4,15 @@ This is the zero-LLM path. Healing lives in the runner; this module only reports
 what happened so the caller can decide to heal or fail.
 """
 
+import re
 import time
 from dataclasses import dataclass
 
-from playwright.sync_api import Page, TimeoutError as PlaywrightTimeout
+from playwright.sync_api import Page
+from playwright.sync_api import TimeoutError as PlaywrightTimeout
 
 from groundhog import config
-from groundhog.browser.snapshot import fingerprint, snapshot
+from groundhog.browser.snapshot import observe
 from groundhog.cases.schema import Expect, Step
 from groundhog.cases.store import render
 
@@ -55,6 +57,26 @@ def settle(page: Page, timeout_ms: int = None) -> None:
         pass
 
 
+# App-agnostic places validation and error feedback lands (alerts, MUI/Ant field errors).
+FEEDBACK = '[role=alert], .Mui-error, .ant-form-item-explain-error'
+
+
+# Selectors whose click is expected to change nothing on its own.
+# Not combobox: opening one must show options, so a silent combobox click is a real no-op.
+FOCUS_CLICK = re.compile(r"\{\{|placeholder|textbox|searchbox|input\b", re.I)
+
+
+def page_says(page: Page) -> str:
+    """The page's own error text after a failed post-condition, so the report
+    explains a rejected submit instead of hinting at a broken selector."""
+    try:
+        title = page.title()  # the route announcer is an alert that only repeats the title
+        texts = [t.strip() for t in page.locator(FEEDBACK).all_inner_texts() if t.strip() and t.strip() != title]
+    except Exception:
+        return ""
+    return f" (page says: {' | '.join(dict.fromkeys(texts))[:200]})" if texts else ""
+
+
 def resolve_path(path: str, ctx: Ctx) -> str:
     path = render(path, ctx.vars)  # paths address entities the test created: /templates/{{name}}/v1
     if path.startswith("http"):
@@ -63,13 +85,9 @@ def resolve_path(path: str, ctx: Ctx) -> str:
     return f"{config.BASE_URL}{path if path.startswith('/') else '/' + path}"
 
 
-def _credential(field: str) -> str:
-    return config.LOGIN_USER if field == "user" else config.LOGIN_PASS
-
-
 def on_picker(page: Page) -> bool:
     """The app sometimes bounces to /workspaces(?forwardUrl=…) when the session
-    loses workspace context — no step or crawl page legitimately starts there."""
+    loses workspace context — no step legitimately starts there."""
     return "/workspaces" in page.url
 
 
@@ -124,7 +142,7 @@ def _resolves(loc, timeout_ms: int) -> bool:
 
 
 def perform(page: Page, step: Step, ctx: Ctx, selector: str | None = None,
-            timeout_ms: int | None = None, fp_before: str | None = None) -> None:
+            timeout_ms: int | None = None) -> None:
     """One action against the live page. Throws on failure so callers decide
     whether to walk fallbacks, heal, or fail."""
     timeout = timeout_ms or config.STEP_TIMEOUT_MS
@@ -140,11 +158,11 @@ def perform(page: Page, step: Step, ctx: Ctx, selector: str | None = None,
     # burns the full action timeout. wait_for waits for visibility itself, so it
     # keeps the full budget. Once existence is established the action below gets
     # its normal timeout, so a slow page still works.
-    if step.action != "wait_for" and not _resolves(loc, config.ACTION_PROBE_MS):
+    if not _resolves(loc, config.ACTION_PROBE_MS):
         raise PlaywrightTimeout(
             f"selector resolved 0 elements after {config.ACTION_PROBE_MS}ms: "
             f"{render(sel, ctx.vars)}")
-    if step.action in ("click", "fill", "fill_secret", "select", "press", "hover"):
+    if step.action in ("click", "fill", "press", "hover"):
         # Existence already passed the probe, so a timeout here means the element
         # is present but not actionable (visually hidden, covered by an overlay,
         # a label-wrapped Ant-style input). The bare Playwright timeout gives the
@@ -154,10 +172,6 @@ def perform(page: Page, step: Step, ctx: Ctx, selector: str | None = None,
                 loc.click(timeout=timeout)
             elif step.action == "fill":
                 loc.fill(value, timeout=timeout)
-            elif step.action == "fill_secret":
-                loc.fill(_credential(step.field or "user"), timeout=timeout)
-            elif step.action == "select":
-                loc.select_option(label=value, timeout=timeout)
             elif step.action == "press":
                 loc.press(value or "Enter", timeout=timeout)
             elif step.action == "hover":
@@ -169,26 +183,6 @@ def perform(page: Page, step: Step, ctx: Ctx, selector: str | None = None,
                 f"{first} — {render(sel, ctx.vars)} exists but never became actionable "
                 "(visually hidden or covered) — try its visible label, row, or parent "
                 "instead") from e
-    elif step.action == "wait_for":
-        loc.wait_for(state="visible", timeout=timeout)
-    elif step.action == "drag":
-        # drag_to covers HTML5-dnd palettes but no-ops silently on d3-drag
-        # handles (it does not throw) — an unchanged fingerprint after settle
-        # triggers a manual mouse drag, with intermediate move events while
-        # pressed, which is what d3-drag needs to register.
-        dst = _locator(page, step, ctx, step.to_selector or "")
-        fp = fp_before or fingerprint(snapshot(page))
-        loc.drag_to(dst, timeout=timeout)
-        settle(page)
-        if fingerprint(snapshot(page)) != fp:
-            return  # drag registered and the page already settled once
-        loc.hover(timeout=timeout)
-        page.mouse.down()
-        box = dst.bounding_box()
-        if box:
-            page.mouse.move(box["x"] + box["width"] / 2,
-                            box["y"] + box["height"] / 2, steps=15)
-        page.mouse.up()
     settle(page)
 
 
@@ -204,7 +198,9 @@ def check_expects(page: Page, expects: Expect, ctx: Ctx) -> bool:
         return True
     try:
         loc = page.get_by_text(value) if expects.kind == "text_visible" else page.locator(value)
-        loc.first.wait_for(state="visible", timeout=config.STEP_TIMEOUT_MS)
+        # .first alone can land on a hidden duplicate (an offscreen label, a tooltip) and
+        # time out while the visible one sits right there: wait for any visible match.
+        loc.filter(visible=True).first.wait_for(state="visible", timeout=config.STEP_TIMEOUT_MS)
         return True
     except Exception:
         return False
@@ -231,30 +227,27 @@ def _await_ready(page: Page, step: Step, ctx: Ctx,
         page.wait_for_timeout(config.READINESS_POLL_MS)
 
 
-def _perform_settle_retry(page: Page, step: Step, ctx: Ctx, sel: str,
-                          fp_before: str | None = None) -> None:
+def _perform_settle_retry(page: Page, step: Step, ctx: Ctx, sel: str) -> None:
     """Act with a short timeout — existence is already established, so the action
     itself is quick. On an actionability timeout (a toast/overlay intercepts the
     pointer, or hydration is late) settle once and retry the same candidate;
     bounded, no loop."""
     try:
-        perform(page, step, ctx, selector=sel, timeout_ms=config.ACTION_PROBE_MS,
-                fp_before=fp_before)
+        perform(page, step, ctx, selector=sel, timeout_ms=config.ACTION_PROBE_MS)
     except PlaywrightTimeout:
         settle(page)
         # Full budget on the retry: an element that exists but is slow to become
         # actionable (animation, late enable) must not fail faster than before.
-        # The page may have changed since fp_before was taken — recompute.
         perform(page, step, ctx, selector=sel)
 
 
 def run_step(page: Page, step: Step, ctx: Ctx) -> StepOutcome:
     """The static replay of one step: drift gate → selector → fallbacks →
     expects → no-op detection. Zero LLM calls."""
-    # One aria_snapshot per step: it is expensive on a big page, so compute the
+    # One observe per step: it is expensive on a big page, so compute the
     # fingerprint once and reuse it for both the drift gate and the no-op baseline.
-    need_fp = bool(step.page_fingerprint) or step.action != "goto"
-    current_fp = fingerprint(snapshot(page)) if need_fp else None
+    need_fp = bool(step.page_fingerprint) or (step.action == "click" and not step.expects)
+    current_fp = observe(page).fingerprint if need_fp else None
     drift = bool(step.page_fingerprint) and current_fp != step.page_fingerprint
 
     if step.action == "goto":
@@ -270,7 +263,7 @@ def run_step(page: Page, step: Step, ctx: Ctx) -> StepOutcome:
                 return StepOutcome(ok=True, drift=drift)
             page.wait_for_timeout(1500)
         return StepOutcome(ok=False, drift=drift,
-                           error=f"expects failed: {step.expects.kind}={step.expects.value!r}")
+                           error=f"expects failed: {step.expects.kind}={step.expects.value!r}{page_says(page)}")
 
     if on_picker(page):
         recover_workspace(page)
@@ -279,22 +272,24 @@ def run_step(page: Page, step: Step, ctx: Ctx) -> StepOutcome:
     candidates = [(i, sel) for i, sel in enumerate([step.selector, *step.fallback_selectors]) if sel]
     ready = _await_ready(page, step, ctx, candidates)
     # When nothing resolved within the budget, still attempt the primary once so
-    # a real Playwright error (not a bare "no selector") reaches report and healer.
+    # a real Playwright error (not a bare "no selector") reaches the report and heal.
     last_error = None
     for i, sel in ready or candidates[:1]:
         try:
-            _perform_settle_retry(page, step, ctx, sel, fp_before=before_fp)
+            _perform_settle_retry(page, step, ctx, sel)
         except Exception as e:
             last_error = str(e).split("\n")[0]
             continue
         mode = "static" if i == 0 else "fallback"
         if step.expects and not check_expects(page, step.expects, ctx):
             return StepOutcome(ok=False, selector=sel, mode=mode, drift=drift,
-                               error=f"expects failed: {step.expects.kind}={step.expects.value!r}")
-        # A "successful" click or drag that changed nothing is a silent no-op —
-        # fail it so it gets reported. Only when the step has no expects of its own.
-        if step.action in ("click", "drag") and not step.expects:
-            if page.url == before_url and fingerprint(snapshot(page)) == before_fp:
+                               error=f"expects failed: {step.expects.kind}={step.expects.value!r}{page_says(page)}")
+        # A "successful" click that changed nothing is a silent no-op — fail it
+        # so it gets reported. Only when the step has no expects of its own.
+        # Exempt: a click that targets an entity by its {{var}} (already-selected row) or
+        # focuses a field (search box, combobox) legitimately changes nothing visible.
+        if step.action == "click" and not step.expects and not FOCUS_CLICK.search(step.selector or ""):
+            if page.url == before_url and observe(page).fingerprint == before_fp:
                 return StepOutcome(ok=False, selector=sel, mode=mode, drift=drift,
                                    error=f"no-op: {step.action} changed nothing on the page")
         return StepOutcome(ok=True, selector=sel, mode=mode, drift=drift)

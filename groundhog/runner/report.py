@@ -4,7 +4,8 @@ import json
 from dataclasses import asdict
 from datetime import datetime, timezone
 
-from groundhog import config
+from groundhog import config, jev
+from groundhog.llm import client
 from groundhog.runner.flow import FlowResult
 from groundhog.runner.replay import RunResult
 
@@ -19,7 +20,8 @@ def _case_lines(result: RunResult, heading: str = "##") -> list[str]:
     ]
     for i, s in enumerate(result.steps, 1):
         note = f" — {s.error}" if s.error else (" (drift)" if s.drift else "")
-        lines.append(f"| {i} | {MODE_ICON.get(s.mode, '?')} {s.mode} | {s.description}{note} | `{s.selector or ''}` | {s.ms} |")
+        icon = MODE_ICON.get(s.mode, "?")
+        lines.append(f"| {i} | {icon} {s.mode} | {s.description}{note} | `{s.selector or ''}` | {s.ms} |")
     if result.assertions:
         lines += ["", f"{heading} Assertions"]
         for a in result.assertions:
@@ -28,10 +30,16 @@ def _case_lines(result: RunResult, heading: str = "##") -> list[str]:
     return lines
 
 
-def _cost_lines(tokens: dict | None) -> list[str]:
-    if tokens:
-        return ["", "## Cost", "```json", json.dumps(tokens, indent=2), "```"]
-    return ["", "## Cost", "Zero LLM calls — fully static run."]
+def _usage() -> dict:
+    """What this process actually spent. Empty on a fully static run."""
+    return {k: v for k, v in (("jev", jev.usage_snapshot()),
+                              ("anthropic", client.usage_snapshot())) if v}
+
+
+def _cost_lines(usage: dict) -> list[str]:
+    if usage:
+        return ["", "## Cost", "```json", json.dumps(usage, indent=2), "```"]
+    return ["", "## Cost", "Zero AI calls, fully static run."]
 
 
 def _write(name: str, payload: dict, lines: list[str]) -> str:
@@ -44,17 +52,19 @@ def _write(name: str, payload: dict, lines: list[str]) -> str:
     return str(base.with_suffix(".md"))
 
 
-def write_report(result: RunResult, tokens: dict | None = None) -> str:
+def write_report(result: RunResult) -> str:
+    usage = _usage()
     lines = [
         f"# {result.case} — {'PASSED' if result.passed else 'FAILED'}",
         f"{result.started_at} · {result.total_ms}ms · {result.healed} healed step(s)",
         "",
-    ] + _case_lines(result) + _cost_lines(tokens)
-    return _write(result.case, {**asdict(result), "tokens": tokens or {}}, lines)
+    ] + _case_lines(result) + _cost_lines(usage)
+    return _write(result.case, {**asdict(result), "usage": usage}, lines)
 
 
-def write_flow_report(result: FlowResult, tokens: dict | None = None) -> str:
+def write_flow_report(result: FlowResult) -> str:
     """One report for the whole flow, a section per case run."""
+    usage = _usage()
     lines = [
         f"# flow {result.flow} — {'PASSED' if result.passed else 'FAILED'}",
         f"{result.started_at} · {result.total_ms}ms · {len(result.runs)} case(s)",
@@ -69,5 +79,5 @@ def write_flow_report(result: FlowResult, tokens: dict | None = None) -> str:
         if cr.result:
             lines += [f"{cr.result.total_ms}ms · {cr.result.healed} healed step(s)", ""]
             lines += _case_lines(cr.result, heading="###")
-    lines += _cost_lines(tokens)
-    return _write(result.flow, {**asdict(result), "tokens": tokens or {}}, lines)
+    lines += _cost_lines(usage)
+    return _write(result.flow, {**asdict(result), "usage": usage}, lines)

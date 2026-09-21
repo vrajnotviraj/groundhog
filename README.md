@@ -12,143 +12,117 @@ Groundhog is end-to-end testing for SaaS apps. That's it.
 
 An AI agent can drive a browser today. Every demo proves that. What none of
 them fix is memory. An agent opening your app for the thousandth time still
-behaves like it's the first: same blind clicking around the DOM, same tokens
-spent finding the same button, every single run.
+behaves like it's the first: the same blind clicking around the DOM, the same
+tokens spent finding the same button, every single run.
 
-The real question behind groundhog: how do you give an AI enough context
-about your app that it stops re-learning it every run?
-
-The answer is to crawl the app once. A crawler walks it like a careful user:
-it clicks links, reads pages, and refuses to touch anything that mutates or
-deletes data. What it sees goes into a knowledge graph in Neo4j. That graph
-is the context. It's what lets you write `create an SMS template` instead of
-walking the agent to the exact button, form, and field by hand.
-
-Once the agent has that map, you write tests in plain English. `groundhog new
-"create an SMS template named {{name}} and verify it appears in the list"`
-drives your real app once, then saves what it did as a JSON case. Every run
-after that replays the JSON. No AI, no map, no guessing, just a deterministic
-script.
-
-A single case proves one thing works. Real objectives rarely live on one
-page. Wiring a route to a template to an event, then confirming the event
-actually fires, is three or four cases deep. Flows chain saved cases into
-that longer story, in order, sharing one login and one set of data. That's
-the objective a lone case can't reach on its own.
+So groundhog pays that cost once. You describe a test in English, it drives
+your real app one time, and it saves what it did as a JSON case of ordinary
+Playwright selectors. Every run after that replays the JSON with zero AI
+calls. When a selector breaks, 1 small AI call heals it and the JSON is
+rewritten.
 
 Like the movie: it wakes up, sees the same day, and gets a little better at
 it.
 
-## What you get
+## Quick start
 
-- **Write tests in English.** `groundhog new "create an SMS template named {{name}} and verify it appears in the list"`: the agent drives your real app, then saves a replayable case.
-- **Runs cost nothing.** A green run makes zero AI calls. The report says so explicitly: "Zero LLM calls".
-- **Tests fix themselves.** A broken selector triggers one small AI call that heals it, and refuses when healing would be dangerous (a Delete step never heals to Cancel).
-- **Your app gets mapped.** A crawler builds a knowledge graph of your app in Neo4j. Every run enriches it. `groundhog suggest` tells you what you haven't tested yet.
-- **Long flows work.** "Create a route, then a template, then an event that wires them together" authors in one pass and replays statically.
-- **Cases chain into flows.** `groundhog flow new "create a template, then an event on it, then clean up"` reuses saved cases, authors the missing ones live, and pairs every create with a delete that runs even when the chain fails.
+You need [uv](https://docs.astral.sh/uv/), a TypeSafe API key from
+[console.typesafe.ai](https://console.typesafe.ai), and an app to test.
+
+```sh
+git clone <this repo> && cd groundhog
+uv sync && uv run playwright install chromium
+uv run groundhog init          # creates .env, then tells you what's missing
+# fill in .env
+uv run groundhog init          # again, until every line is green
+```
+
+`init` checks your env vars, Chromium, the app URL, the Jev API and the login
+itself, and each failing line says what to do about it. Then author and
+replay:
+
+```sh
+uv run groundhog new "create an SMS template named {{name}} and verify it appears in the templates list" \
+  --name my-first-case --var name=gh-1 --start /:ws/templates
+uv run groundhog run my-first-case --var name=gh-2   # static, zero AI
+```
+
+groundhog logs in through the app's own login API, called from inside the
+browser session, so no login page is driven and it works even when the login
+page only offers SSO buttons. Your credentials live in `.env` and never reach a
+model, a snapshot or a case file. The session is cached under `.auth/`, so the
+login replays only when it expires.
+
+## How it decides
+
+Authoring runs a loop. Each turn, groundhog reads the live page into an
+element table: every visible, enabled, interactive element, numbered, with
+its role, label, current value and state. Password fields are excluded before
+anything leaves the browser.
+
+That table goes to [Jev](https://docs.typesafe.ai), a System One model that
+answers typed questions with probabilities instead of prose. One request asks
+which operation comes next and which numbered element it acts on. Jev picks
+an index. It never writes a selector.
+
+Code owns the selector. Groundhog takes the DOM node Jev picked and derives
+candidates from it in order of durability: `data-testid`, a stable `id`,
+`aria-label`, the accessible name, a placeholder, a scoped variant like
+`role=dialog >> role=button[name="Delete"]`. Each candidate is run against
+the live page and kept only if it resolves to exactly that node. The top 3
+survivors become the step's selector and its fallbacks.
+
+Replay is then free. The saved JSON is a list of selectors, values and
+post-conditions, checked directly.
+
+Two things still call AI after authoring: a step whose selector matches
+nothing asks Jev to pick the element it meant, and a plain-English assertion
+like "the template appears in the list" is judged by Jev against the final
+page. A green run of a case with no English assertions makes zero calls, and
+the report says so.
 
 ## Variables
 
 Every case has its own local vars. `{{name}}` in an intent becomes `--var
-name=gh-1` at run time, substituted into values, assertions, and selectors.
+name=gh-1` at run time, substituted into values, assertions and selectors.
 Same case, different data, every run.
 
-A flow needs more than that. When step one creates a template and step three
-searches for it, both steps need the same name. That's what a flow's `vars`
-block is: one shared namespace, set once at the flow level, visible to every
-case in the chain.
+The agent types real values while authoring, because validated form fields
+reject braces, and the saved case is re-parameterized back into `{{var}}`
+form automatically.
 
-A case inside the chain can still override a shared var just for itself:
+## Chain cases into flows
+
+One case tests one thing. A flow chains saved cases into a longer story:
+create a template, create an event that uses it, delete both. One browser
+session, one login, one shared set of `{{var}}` values.
+
+```sh
+uv run groundhog flow new "create an SMS template, verify it shows up in search, then delete it"
+uv run groundhog flow run template-lifecycle
+uv run groundhog flow list
+```
+
+`flow new` splits the description into case-sized steps, replays the ones a
+saved case already covers, and authors the missing ones on the spot, in chain
+order against real app state. That's what lets the case that creates an event
+pick the template the chain just created. After that one pass, the flow and
+every case in it are saved, and `flow run` is static. It needs
+`ANTHROPIC_API_KEY`.
+
+When step 1 creates a template and step 3 searches for it, both need the same
+name. That's what a flow's `vars` block is: one shared namespace, set once,
+visible to every case in the chain. A case can override a shared var just for
+itself:
 
 ```json
 {"case": "search-templates", "vars": {"query": "{{name}}"}}
 ```
 
-That override wins locally without touching what the rest of the chain sees.
-And `{{stamp}}` (a per-run timestamp) gets baked into shared defaults like
-`gh-{{stamp}}`, so two runs of the same flow never collide over leftover
-data.
-
-Local vars make one case reusable. Shared vars make a chain of cases behave
-like one continuous story instead of four cases that happen to run back to
-back.
-
-## Quick start (~5 minutes)
-
-You need [uv](https://docs.astral.sh/uv/), Docker (optional), and an Anthropic API key.
-
-```sh
-git clone <this repo> && cd groundhog
-uv sync && uv run playwright install chromium
-docker compose up -d          # Neo4j (optional): degrades gracefully without it
-cp .env.example .env          # fill in BASE_URL, LOGIN_USER/PASS/WORKSPACE, ANTHROPIC_API_KEY
-```
-
-Then teach it your login form once. Copy this into `.auth/login.json` and adjust
-the selectors:
-
-```json
-{"start_path": "/", "steps": [
-  {"action": "goto", "selector": "/", "description": "Open the login page"},
-  {"action": "fill_secret", "selector": "role=textbox[name=\"Email Address\"]", "field": "user", "description": "email"},
-  {"action": "fill_secret", "selector": "role=textbox[name=\"Password\"]", "field": "pass", "description": "password"},
-  {"action": "click", "selector": "role=button[name=\"Login\"]", "description": "submit"}
-]}
-```
-
-Credentials stay in `.env`. They never reach the LLM or disk: `fill_secret`
-steps store only the field name. Session cookies are cached under `.auth/`
-(gitignored) so login replays only when the session expires.
-
-## Use it
-
-`uv run` re-syncs dependencies on every call, which is why the commands below
-use it. For a real `groundhog` command on your `PATH` instead, install it as
-a uv tool once: `uv tool install --editable .` (editable means it keeps
-running your local code, not a frozen copy). A plain shell alias to `uv run
-groundhog` is a lighter option, but it's just a shorthand, not a real
-install: it still re-syncs on every call.
-
-```sh
-uv run groundhog doctor                       # check API key, app URL, Neo4j, login flow
-uv run groundhog crawl --scope templates      # map your app into the knowledge graph
-uv run groundhog new "create an SMS template named {{name}} and verify it appears in the list" --var name=gh-seed
-uv run groundhog run create-an-sms-template --var name=gh-1   # static replay, zero AI
-uv run groundhog run create-an-sms-template --var name=gh-2   # again, still static
-uv run groundhog suggest                      # untested scenarios, inferred from the graph
-uv run groundhog list                         # saved cases, runs, heal counts
-```
-
-Break a selector in `cases/*.json` and run again: the step heals and the JSON
-is rewritten. Every run writes a markdown + JSON report to `runs/` with
-per-step mode (`static` / `fallback` / `healed` / `failed`), drift flags, and
-exact token spend. Long runs fail safe: Ctrl-C during a crawl keeps every page
-already ingested, and a failed authoring run dumps its partial trace to `runs/`
-so the agent's work isn't lost.
-
-## Chain cases into flows
-
-One case tests one thing. A flow chains saved cases into a longer story: create a
-template, create an event that uses it, delete both. One browser session, one
-login, one shared set of `{{var}}` values.
-
-```sh
-uv run groundhog flow new "create an SMS template, verify it shows up in search, then delete it"
-uv run groundhog flow run template-lifecycle     # static replay, zero AI
-uv run groundhog flow list
-```
-
-`flow new` is an orchestrator. It splits the description into case-sized steps,
-replays the ones a saved case already covers, and authors the missing ones on
-the spot, in chain order against real app state. That's what lets the case that
-creates an event pick the template the chain just created. After that one pass,
-the flow and every case in it are saved, and `flow run` is static.
-
-Cleanup is part of the contract. Cases under `cleanup` run even when the chain
-fails, the composer pairs every create with a delete, and a flow only passes if
-cleanup passes too. Shared vars default to per-run values like `gh-{{stamp}}`,
-so runs never collide with leftover data.
+Cleanup is part of the contract. Cases under `cleanup` run even when the
+chain fails, and a flow only passes if cleanup passes too. Shared vars
+default to per-run values like `gh-{{stamp}}`, so 2 runs never collide over
+leftover data.
 
 A flow file is small enough to write by hand:
 
@@ -161,53 +135,49 @@ A flow file is small enough to write by hand:
 
 ## How a run works
 
-1. **Static replay.** Each step checks for page drift (a fingerprint of the
-   pruned accessibility snapshot), tries its selector, then its fallback
-   selectors, all without AI. A step's `expects` post-condition verifies it
-   actually worked; a "successful" click that changed nothing counts as a
-   failure, not a silent pass.
-2. **Heal on failure only.** One small AI call sees the step's intent and the
-   current page, and returns a replacement selector, or refuses. A heal is
-   accepted only after it executes and passes `expects`, and persisted only if
-   the whole run passes. Heal history stays in the case as a flakiness signal.
-3. **Assertions.** Deterministic ones (`url_contains:…`, `text_visible:…`) are
-   checked directly. Plain-English ones are judged by a fast model against the
-   final page, with a confidence score.
+1. **Static replay.** Each step checks for page drift, tries its selector,
+   then its fallbacks, all without AI. A step's `expects` post-condition
+   verifies it actually worked, so a "successful" click that changed nothing
+   counts as a failure.
+2. **Heal on failure only.** Jev picks the element the step meant. The heal
+   is refused when the probability is low, when the frame doesn't match, or
+   when a Delete step would become a Cancel. It's persisted only if the whole
+   run passes, and the heal history stays in the case as a flakiness signal.
+3. **Assertions.** Deterministic ones (`url_contains:…`, `text_visible:…`)
+   are checked directly. English ones are judged by Jev with a probability.
 
-## How authoring works
-
-A planner reads the knowledge graph and drafts sub-goals. An executor agent
-performs them one at a time against your live app, verifying as it goes. An
-optimizer then distills the executed trace into the minimal replayable case.
-It keeps only selectors that actually ran, never invented ones.
-
-The agent types real values while authoring (validated form fields reject
-braces); the saved case is re-parameterized back into `{{var}}` form
-automatically, ready for the next run.
+Every run writes a markdown and JSON report to `runs/` with per-step mode
+(`static` / `fallback` / `healed` / `failed`) and which AI calls ran.
 
 ## Configuration
 
-| Env var | Default | Used for |
-|---|---|---|
-| `SMART_MODEL` | `claude-sonnet-5` | planner, optimizer, suggest |
-| `FAST_MODEL` | `claude-haiku-4-5` | executor steps, healer, judge, crawl |
+`.env` holds 5 required values plus 1 optional one.
+
+| Env var | Used for |
+|---|---|
+| `BASE_URL` | the app under test, e.g. `https://app.example.com` |
+| `LOGIN_USER` | login email |
+| `LOGIN_PASS` | login password |
+| `LOGIN_WORKSPACE` | workspace to select after login |
+| `TYPESAFE_API_KEY` | Jev, needed by `new`, heal and English assertions |
+| `ANTHROPIC_API_KEY` | optional: `flow new`, and field values the intent doesn't spell out |
+
+Timeouts, action budgets, probability thresholds and model names are plain
+constants in `groundhog/config.py`, each overridable by an env var of the
+same name.
 
 ## Layout
 
 ```
 groundhog/
-  cli.py                 crawl · new · run · list · show · suggest · doctor
-  config.py              env, model slots, budgets
-  browser/               session+login · snapshot pruning+fingerprints · step execution · selector rules
-  llm/                   Anthropic wrapper (structured output, caching, usage counter) · prompts/*.md
-  agent/                 planner · executor · optimizer · healer · judge · composer
-  graph/                 Neo4j store (single write path) · queries · ingest
-  crawl/                 budgeted BFS crawler · LLM page observation
+  cli.py                 init · new · run · list · show · flow new|run|list
+  config.py              env, budgets, paths
+  jev.py                 TypeSafe client, the questions, usage counter
+  browser/               session+login · DOM snapshot+selectors · step execution
+  agent/                 authoring loop · flow composer · optional text helper
+  llm/client.py          Anthropic wrapper, used only for text
   cases/ runner/         case schema+store · replay orchestration · reports
 cases/                   saved test cases (JSON, edit freely)
 flows/                   saved flows: chains of cases (JSON, edit freely)
 runs/                    run reports
 ```
-
-Safety: the crawler never clicks anything that mutates or destroys data.
-Those edges enter the graph only from real test runs.

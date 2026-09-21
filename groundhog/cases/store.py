@@ -2,8 +2,8 @@
 
 import re
 
-from groundhog.config import CASES_DIR, FLOWS_DIR
 from groundhog.cases.schema import Case, Flow
+from groundhog.config import CASES_DIR, FLOWS_DIR
 
 VAR = re.compile(r"\{\{\s*(\w+)\s*\}\}")
 
@@ -14,6 +14,14 @@ def render(text: str, vars: dict[str, str] | None = None) -> str:
     step that targets an entity created earlier in the same run by its
     per-run name."""
     return VAR.sub(lambda m: (vars or {}).get(m.group(1), m.group(0)), text)
+
+
+def missing_vars(case: Case, vars: dict[str, str] | None) -> list[str]:
+    """{{var}}s the intent declares that the caller did not supply; running with them
+    unrendered types the literal braces into the app. Only the intent counts: step
+    values may carry the app's own {{placeholders}}, which are content, not vars."""
+    used = dict.fromkeys(VAR.findall(case.intent))
+    return [k for k in used if not (vars or {}).get(k)]  # unset or empty both type braces
 
 
 def case_path(name: str):

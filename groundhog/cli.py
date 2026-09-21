@@ -1,11 +1,15 @@
 """groundhog — AI-authored, deterministically-replayed web tests."""
 
 import json
+from datetime import datetime, timezone
 
 import typer
+from dotenv import dotenv_values
 from rich.console import Console
+from rich.markup import escape
 from rich.table import Table
 
+from groundhog import config
 from groundhog.cases import store
 
 app = typer.Typer(no_args_is_help=True, add_completion=False)
@@ -13,48 +17,152 @@ flow_app = typer.Typer(no_args_is_help=True, add_completion=False)
 app.add_typer(flow_app, name="flow", help="Chain saved cases: shared vars, always-run cleanup.")
 console = Console()
 
+REQUIRED = ["BASE_URL", "LOGIN_USER", "LOGIN_PASS", "LOGIN_WORKSPACE", "TYPESAFE_API_KEY"]
+
 
 def _parse_vars(pairs: list[str]) -> dict[str, str]:
     return dict(p.split("=", 1) for p in pairs)
 
 
-def _need_llm() -> None:
-    """Fail fast with a hint instead of a deep SDK auth traceback mid-run."""
-    from groundhog import config
+# --- init checks: each returns (ok, line to print after the mark) ---
 
-    if not config.ANTHROPIC_API_KEY:
-        console.print("[red]ANTHROPIC_API_KEY is not set — add it to .env[/]")
-        raise typer.Exit(2)
+def placeholders() -> dict[str, str]:
+    """The values shipped in .env.example, so init can tell an unedited copy apart."""
+    try:
+        return dict(dotenv_values(config.ROOT / ".env.example"))
+    except OSError:
+        return {}
 
 
-def _need_graph() -> None:
-    """Fail fast when Neo4j is required (crawl/suggest) rather than optional."""
-    from groundhog import config
-    from groundhog.graph import store
+def check_env(name: str, value: str, placeholder: str | None) -> tuple[bool, str]:
+    if not value:
+        return False, f"{name} not set — edit .env"
+    if placeholder and value == placeholder:
+        return False, f"{name} still the placeholder — edit .env"
+    return True, name
+
+
+def check_chromium() -> tuple[bool, str]:
+    from playwright.sync_api import sync_playwright
 
     try:
-        store.driver()
+        with sync_playwright() as p:
+            p.chromium.launch().close()
     except Exception:
-        console.print(f"[red]Neo4j is not reachable at {config.NEO4J_URI} — docker compose up -d[/]")
-        raise typer.Exit(2)
+        return False, "Chromium — run: uv run playwright install chromium"
+    return True, "Chromium launches"
+
+
+def check_app() -> tuple[bool, str]:
+    import httpx
+
+    try:
+        httpx.get(config.BASE_URL, follow_redirects=True, timeout=8)
+    except Exception as e:
+        return False, f"app unreachable ({config.BASE_URL}) — {e}"
+    return True, f"app reachable ({config.BASE_URL})"
+
+
+def check_jev() -> tuple[bool, str]:
+    from groundhog import jev
+
+    try:
+        p = jev.ping()
+    except Exception as e:
+        return False, f"Jev — {e}"
+    return True, f"Jev reachable ({p['model']}, {p['latency_ms']}ms)"
+
+
+def check_login() -> tuple[bool, str]:
+    from groundhog.browser.session import Session
+
+    try:
+        with Session() as s:
+            s.ensure_logged_in()
+            return True, (f"logged in as {config.LOGIN_USER} · workspace {s.ws} "
+                          f"({config.LOGIN_WORKSPACE}) · session cached in .auth/")
+    except Exception as e:
+        return False, f"login — {e}"
+
+
+def inventory() -> str:
+    cases = len(list(config.CASES_DIR.glob("*.json"))) if config.CASES_DIR.exists() else 0
+    flows = len(list(config.FLOWS_DIR.glob("*.json"))) if config.FLOWS_DIR.exists() else 0
+    return f"cases/: {cases} saved · flows/: {flows} saved"
+
+
+@app.command()
+def init():
+    """Check everything a first run needs and say exactly what is missing."""
+    env = config.ROOT / ".env"
+    if not env.exists():
+        env.write_text((config.ROOT / ".env.example").read_text())
+        console.print("created .env — fill in BASE_URL, LOGIN_USER, LOGIN_PASS, LOGIN_WORKSPACE, "
+                      "TYPESAFE_API_KEY and run `groundhog init` again")
+        raise typer.Exit(1)
+
+    def line(ok: bool, detail: str) -> None:
+        # A failure detail carries an exception message, which may contain [brackets]
+        # that rich would read as markup and choke on.
+        console.print(f"  [{'green' if ok else 'red'}]{'✓' if ok else '✗'}[/] {escape(detail)}", highlight=False)
+
+    ph = placeholders()
+    env_ok = True
+    for name in REQUIRED:
+        ok, detail = check_env(name, getattr(config, name, ""), ph.get(name))
+        env_ok = env_ok and ok
+        line(ok, detail)
+    if config.ANTHROPIC_API_KEY:
+        line(True, "ANTHROPIC_API_KEY")
+    else:
+        console.print("  [dim]·[/] ANTHROPIC_API_KEY — optional: unlocks `flow new` and lets the agent "
+                      "write field values the intent doesn't spell out")
+
+    chromium_ok, detail = check_chromium()
+    line(chromium_ok, detail)
+    app_ok, detail = check_app()
+    line(app_ok, detail)
+    jev_ok, detail = check_jev()
+    line(jev_ok, detail)
+
+    login_ok = env_ok and chromium_ok and app_ok
+    if login_ok:
+        login_ok, detail = check_login()
+        line(login_ok, detail)
+    else:
+        console.print("  [dim]·[/] login — skipped until the checks above pass")
+
+    console.print(f"  [dim]·[/] {inventory()}")
+    console.print("\nNext:\n"
+                  '  uv run groundhog new "create an SMS template named {{name}} and verify it appears '
+                  'in the templates list" --name my-first-case --var name=gh-1\n'
+                  "  uv run groundhog run my-first-case --var name=gh-2\n"
+                  "  uv run groundhog flow run template-lifecycle", markup=False)
+    raise typer.Exit(0 if env_ok and chromium_ok and app_ok and jev_ok and login_ok else 1)
 
 
 @app.command()
 def run(name: str, var: list[str] = typer.Option([], help="template var, e.g. --var name=gh-test"),
-        no_heal: bool = typer.Option(False, help="fail instead of waking the healer"),
+        no_heal: bool = typer.Option(False, help="fail instead of trying to heal a drifted step"),
         headed: bool = typer.Option(False, help="show the browser")):
-    """Replay a saved case — static, zero LLM until something drifts."""
+    """Replay a saved case — static, zero AI until something drifts."""
     from groundhog.browser.session import Session
     from groundhog.runner.replay import run_case
     from groundhog.runner.report import write_report
-    from groundhog.llm import client
 
     case = store.load(name)
+    vars = _parse_vars(var)
+    if missing := store.missing_vars(case, vars):
+        # A bare run types literal {{braces}} into the app; a fresh per-run value is
+        # what a create-style case wants. Delete-style cases need a real --var.
+        stamp = datetime.now(timezone.utc).strftime("%H%M%S")
+        vars |= {m: f"gh-{stamp}" for m in missing}
+        console.print("[dim]using " + " ".join(f"--var {m}=gh-{stamp}" for m in missing) + "[/]")
     with Session(headless=not headed) as session:
         session.ensure_logged_in()
-        result = run_case(case, session, vars=_parse_vars(var), heal=not no_heal)
+        result = run_case(case, session, vars=vars, heal=not no_heal)
 
-    report = write_report(result, tokens=client.usage_snapshot())
+    report = write_report(result)
     console.print(f"\n[{'green' if result.passed else 'red'}]{'PASSED' if result.passed else 'FAILED'}[/] "
                   f"in {result.total_ms}ms · {result.healed} healed · report: {report}")
     raise typer.Exit(0 if result.passed else 1)
@@ -64,24 +172,27 @@ def run(name: str, var: list[str] = typer.Option([], help="template var, e.g. --
 def new(intent: str, name: str = typer.Option(None, help="case name (kebab-case); derived from intent if omitted"),
         var: list[str] = typer.Option([], help="concrete value for a {{var}} in the intent, e.g. --var name=gh-1; "
                                                "the saved case is re-parameterized automatically"),
-        verify: bool = typer.Option(False, help="after saving, replay the case once against fresh data to prove it works"),
+        start: str = typer.Option("/:ws/home", help="path to open before the agent starts"),
+        verify: bool = typer.Option(False, help="after saving, replay the case once to prove it works"),
         headed: bool = typer.Option(False, help="show the browser")):
     """Author a new case from a natural-language intent (agentic, one-time cost)."""
-    _need_llm()
-    from groundhog.agent.executor import author_case
+    from groundhog.agent.author import author_case
 
     parsed = _parse_vars(var)
-    case = author_case(intent, name=name, headless=not headed, vars=parsed)
-    console.print(f"[green]saved[/] cases/{case.name}.json — {len(case.steps)} steps, {len(case.assertions)} assertions")
+    try:
+        case = author_case(intent, name=name, headless=not headed, vars=parsed, start=start)
+    except RuntimeError as e:
+        console.print(f"[red]{escape(str(e))}[/]")
+        raise typer.Exit(2)
 
     if verify:
-        from groundhog.agent.executor import verify_case
+        from groundhog.agent.author import verify_case
 
         result = verify_case(case, vars=parsed, headless=not headed)
         if not result.passed:
             broken = "; ".join(s.description for s in result.steps if s.mode == "failed") or "see steps above"
             console.print(f"[red]verification failed[/] — {case.name} is saved but did not replay cleanly: {broken}. "
-                          "Run `groundhog run` to let the healer try, or edit the case JSON.")
+                          "Run `groundhog run` to let it heal, or edit the case JSON.")
             raise typer.Exit(1)
         console.print(f"[green]verified[/] {case.name} replays cleanly against fresh data")
 
@@ -103,11 +214,10 @@ def show(name: str):
 
 @flow_app.command("run")
 def flow_run(name: str, var: list[str] = typer.Option([], help="shared template var, e.g. --var name=gh-test"),
-             no_heal: bool = typer.Option(False, help="fail instead of waking the healer"),
+             no_heal: bool = typer.Option(False, help="fail instead of trying to heal a drifted step"),
              headed: bool = typer.Option(False, help="show the browser")):
     """Replay a flow: chain cases in one session, then cleanup — always."""
     from groundhog.browser.session import Session
-    from groundhog.llm import client
     from groundhog.runner.flow import run_flow
     from groundhog.runner.report import write_flow_report
 
@@ -116,7 +226,7 @@ def flow_run(name: str, var: list[str] = typer.Option([], help="shared template 
         session.ensure_logged_in()
         result = run_flow(flow, session, vars=_parse_vars(var), heal=not no_heal)
 
-    report = write_flow_report(result, tokens=client.usage_snapshot())
+    report = write_flow_report(result)
     console.print(f"\n[{'green' if result.passed else 'red'}]{'PASSED' if result.passed else 'FAILED'}[/] "
                   f"in {result.total_ms}ms · {len(result.runs)} case(s) · report: {report}")
     raise typer.Exit(0 if result.passed else 1)
@@ -127,10 +237,13 @@ def flow_new(intent: str, name: str = typer.Option(None, help="flow name (kebab-
              headed: bool = typer.Option(False, help="show the browser")):
     """Compose a flow from English: reuse saved cases, author the missing ones
     live in one pass, then save the flow — later runs are static."""
-    _need_llm()
     from groundhog.agent.composer import compose_flow
 
-    flow = compose_flow(intent, name=name, headless=not headed)
+    try:
+        flow = compose_flow(intent, name=name, headless=not headed)
+    except RuntimeError as e:
+        console.print(f"[red]{escape(str(e))}[/]")
+        raise typer.Exit(2)
     chain = " → ".join(fc.case for fc in flow.chain)
     cleanup = ", ".join(fc.case for fc in flow.cleanup) or "none"
     console.print(f"\n[green]saved[/] flows/{flow.name}.json — chain: {chain} · cleanup: {cleanup} · vars: {flow.vars}")
@@ -144,74 +257,6 @@ def flow_list():
         table.add_row(f.name, " → ".join(fc.case for fc in f.chain),
                       ", ".join(fc.case for fc in f.cleanup), json.dumps(f.vars), f.intent)
     console.print(table)
-
-
-@app.command()
-def crawl(scope: str = typer.Option("/", help="restrict to one feature, e.g. /templates"),
-          max_pages: int = typer.Option(None), headed: bool = typer.Option(False),
-          docs: bool = typer.Option(False, help="also read the product docs into a Feature relationship layer")):
-    """Crawl the app into the Neo4j knowledge graph (feature-scoped, budgeted)."""
-    _need_llm()
-    _need_graph()  # both the crawl and the --docs pass write through the graph
-    from groundhog.crawl.crawler import crawl as do_crawl
-
-    stats = do_crawl(scope=scope, max_pages=max_pages, headless=not headed)
-    console.print(f"[green]crawled[/] {stats['pages']} pages, {stats['elements']} elements, {stats['transitions']} transitions")
-    if docs:
-        from groundhog.crawl.docs import learn_features
-
-        try:
-            d = learn_features()
-            console.print(f"[green]features[/] {d['features']} features, {d['relations']} relations")
-        except Exception as e:  # a failed docs pass never fails the crawl
-            console.print(f"[yellow]docs pass skipped — {e}[/]")
-
-
-@app.command()
-def suggest():
-    """Infer untested scenarios from the graph (coverage gaps + asymmetries)."""
-    _need_llm()
-    _need_graph()
-    from groundhog.graph.queries import suggestions
-
-    for s in suggestions():
-        console.print(f"[cyan]•[/] {s}")
-
-
-@app.command()
-def doctor():
-    """Check the environment: API key, app reachability, Neo4j, login flow."""
-    import httpx
-
-    from groundhog import config
-
-    failed = []
-
-    def check(label: str, passed: bool, hint: str) -> None:
-        if not passed:
-            failed.append(label)
-        console.print(f"  [{'green' if passed else 'red'}]{'✓' if passed else '✗'}[/] {label}"
-                      + ("" if passed else f" — {hint}"))
-
-    check("ANTHROPIC_API_KEY set", bool(config.ANTHROPIC_API_KEY), "add it to .env")
-    try:
-        httpx.get(config.BASE_URL, follow_redirects=True, timeout=5)
-        reachable = True
-    except Exception:
-        reachable = False
-    check(f"app reachable ({config.BASE_URL})", reachable, "check BASE_URL in .env")
-    try:
-        from groundhog.graph import store
-
-        store.driver()
-        graph = True
-    except Exception:
-        graph = False
-    check(f"Neo4j reachable ({config.NEO4J_URI})", graph,
-          "docker compose up -d (crawl/suggest need it; run/new degrade gracefully)")
-    check("login flow present (.auth/login.json)", (config.AUTH_DIR / "login.json").exists(),
-          "seed one (see README)")
-    raise typer.Exit(1 if failed else 0)
 
 
 if __name__ == "__main__":
