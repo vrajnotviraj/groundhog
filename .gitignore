@@ -6,10 +6,6 @@
 .auth/
 .pypirc
 
-# --- Groundhog output ---
-runs/
-neo4j-data/
-
 # --- Python ---
 __pycache__/
 *.py[cod]

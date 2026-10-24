@@ -48,9 +48,11 @@ JUDGE_THRESHOLD = float(os.environ.get("JUDGE_THRESHOLD", "0.6"))
 HEAL_THRESHOLD = float(os.environ.get("HEAL_THRESHOLD", "0.6"))
 
 ROOT = Path.cwd()
-CASES_DIR = ROOT / "cases"
-FLOWS_DIR = ROOT / "flows"
-RUNS_DIR = ROOT / "runs"
+# Cases, flows, runs, users and sessions all live in this database.
+MONGO_URL = os.environ.get("MONGO_URL", "mongodb://localhost:27017/groundhog")
+# The first console admin, created by `groundhog db seed` when there are no users.
+ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "")
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
 AUTH_DIR = ROOT / ".auth"
 
 # Workspace ids are per-install, so they must never land in a saved case.

@@ -1,11 +1,13 @@
-"""Load/save cases (cases/) and flows (flows/) as pretty JSON, plus {{var}} rendering."""
+"""Cases and flows live in Mongo, one document per name, plus {{var}} rendering."""
 
 import re
+from datetime import datetime, timezone
 
+from groundhog import db
 from groundhog.cases.schema import Case, Flow
-from groundhog.config import CASES_DIR, FLOWS_DIR
 
 VAR = re.compile(r"\{\{\s*(\w+)\s*\}\}")
+NAME = r"^[a-z0-9][a-z0-9-]{0,63}$"  # case and flow names: lowercase kebab-case
 
 
 def render(text: str, vars: dict[str, str] | None = None) -> str:
@@ -24,31 +26,53 @@ def missing_vars(case: Case, vars: dict[str, str] | None) -> list[str]:
     return [k for k in used if not (vars or {}).get(k)]  # unset or empty both type braces
 
 
-def case_path(name: str):
-    return CASES_DIR / f"{name}.json"
+def _put(collection, model) -> None:
+    doc = {"_id": model.name, **model.model_dump(), "updated_at": datetime.now(timezone.utc).isoformat()}
+    collection.replace_one({"_id": model.name}, doc, upsert=True)
+
+
+def _fields(doc: dict) -> dict:
+    return {k: v for k, v in doc.items() if k not in ("_id", "updated_at")}
+
+
+def _get(collection, cls, name: str):
+    doc = collection.find_one({"_id": name})
+    if doc is None:
+        raise KeyError(f"no saved {cls.__name__.lower()} named {name}")
+    return cls.model_validate(_fields(doc))
+
+
+def _all(collection, cls) -> list:
+    return [cls.model_validate(_fields(d)) for d in collection.find().sort("_id")]
 
 
 def load(name: str) -> Case:
-    return Case.model_validate_json(case_path(name).read_text())
+    return _get(db.cases(), Case, name)
 
 
 def save(case: Case) -> None:
-    CASES_DIR.mkdir(exist_ok=True)
-    case_path(case.name).write_text(case.model_dump_json(indent=2) + "\n")
+    _put(db.cases(), case)
+
+
+def delete(name: str) -> bool:
+    return db.cases().delete_one({"_id": name}).deleted_count == 1
 
 
 def list_cases() -> list[Case]:
-    return [Case.model_validate_json(p.read_text()) for p in sorted(CASES_DIR.glob("*.json"))]
+    return _all(db.cases(), Case)
 
 
 def load_flow(name: str) -> Flow:
-    return Flow.model_validate_json((FLOWS_DIR / f"{name}.json").read_text())
+    return _get(db.flows(), Flow, name)
 
 
 def save_flow(flow: Flow) -> None:
-    FLOWS_DIR.mkdir(exist_ok=True)
-    (FLOWS_DIR / f"{flow.name}.json").write_text(flow.model_dump_json(indent=2) + "\n")
+    _put(db.flows(), flow)
+
+
+def delete_flow(name: str) -> bool:
+    return db.flows().delete_one({"_id": name}).deleted_count == 1
 
 
 def list_flows() -> list[Flow]:
-    return [Flow.model_validate_json(p.read_text()) for p in sorted(FLOWS_DIR.glob("*.json"))]
+    return _all(db.flows(), Flow)

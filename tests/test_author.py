@@ -1,4 +1,3 @@
-import json
 from types import SimpleNamespace
 
 import pytest
@@ -44,14 +43,6 @@ def test_embeds_value_rejects_data_but_allows_placeholders():
 def test_verify_vars_appends_fresh_suffix_to_every_supplied_value():
     assert author._verify_vars({"name": "gh-1", "route": "gh-1"}, 42) == {"name": "gh-1-v42", "route": "gh-1-v42"}
     assert author._verify_vars(None, 42) == {}
-
-
-def test_partial_trace_dump_writes_replayable_json(tmp_path, monkeypatch):
-    monkeypatch.setattr(config, "RUNS_DIR", tmp_path)
-    trace = [{"action": "click", "selector": "#save", "description": "save"}]
-    path = author._dump_partial("long-flow", trace)
-    assert "long-flow-partial-" in path
-    assert json.loads((tmp_path / path.rsplit("/", 1)[1]).read_text()) == trace
 
 
 def test_outcome_clauses_on_the_saved_intents():
@@ -376,13 +367,6 @@ def test_three_waits_with_no_change_end_the_run(monkeypatch):
     assert _run(page) == ([], "blocked")
 
 
-def test_decision_line_shows_runners_up_only_when_hesitant():
-    sure = SimpleNamespace(operation="CLICK", element=_el(), probability=0.95, latency_ms=10, detail="ops CLICK=0.95")
-    unsure = SimpleNamespace(operation="WAIT", element=None, probability=0.4, latency_ms=10,
-                             detail="ops WAIT=0.40 CLICK=0.35")
-    assert "ops" not in author._decision_line(sure) and "CLICK=0.35" in author._decision_line(unsure)
-
-
 def test_var_targeting_click_is_kept_even_when_it_changed_nothing():
     trace = [{"action": "click", "selector": 'role=button[name*="gh-1"]', "frame": None, "fallback_selectors": [],
               "value": None, "description": "click button G gh-1", "expects": None, "url_before": "u",
@@ -406,3 +390,14 @@ def test_a_lone_empty_field_is_typed_into_when_jev_rejects_every_target(monkeypa
         url=pg.url, title="t", text=pg.text, elements=[field], omitted=0, fingerprint=pg.fp))
     trace, reason = _run(page)
     assert reason == "done" and [t["action"] for t in trace] == ["fill"] and trace[0]["value"] == "gh-1"
+
+
+def test_drive_keeps_the_partial_trace_on_the_run_when_authoring_stops(monkeypatch):
+    from groundhog import db, events
+
+    monkeypatch.setattr(author, "goto_app", lambda page, url: None)
+    monkeypatch.setattr(author, "run_executor", lambda *a: (a[-1].append(_trace_entry()), "budget"))
+    run_id = events.start(None, "author", "c", {})
+    with pytest.raises(RuntimeError, match="partial trace kept on the run"):
+        author._drive(SimpleNamespace(ws="FY1", page=None), "create a template", "c", {}, "/:ws/home")
+    assert db.runs().find_one({"_id": run_id})["partial_trace"] == [_trace_entry()]

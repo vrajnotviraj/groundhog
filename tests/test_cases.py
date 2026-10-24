@@ -1,6 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
+from groundhog import db
 from groundhog.cases import store
 from groundhog.cases.schema import Assertion, Case, Expect, Step
 
@@ -19,13 +20,14 @@ def _case():
     )
 
 
-def test_case_roundtrip(tmp_path, monkeypatch):
-    monkeypatch.setattr(store, "CASES_DIR", tmp_path)
+def test_case_roundtrip():
     case = _case()
     store.save(case)
-    loaded = store.load("roundtrip")
-    assert loaded == case
+    assert store.load("roundtrip") == case
     assert store.list_cases() == [case]
+    assert store.delete("roundtrip") and store.list_cases() == []
+    with pytest.raises(KeyError):
+        store.load("roundtrip")
 
 
 def test_assertion_defaults_to_jev():
@@ -38,11 +40,10 @@ def test_removed_actions_are_rejected():
             Step(action=action)
 
 
-def test_old_files_load_and_drop_the_removed_step_keys(tmp_path, monkeypatch):
-    monkeypatch.setattr(store, "CASES_DIR", tmp_path)
-    (tmp_path / "old.json").write_text(
-        '{"name": "old", "intent": "x", "steps": [{"id": "s1", "action": "fill", "selector": "#q",'
-        ' "value": "gh-1", "field": null, "to_selector": null}], "assertions": []}')
+def test_old_documents_load_and_drop_the_removed_step_keys():
+    db.cases().insert_one({"_id": "old", "name": "old", "intent": "x", "assertions": [],
+                           "steps": [{"id": "s1", "action": "fill", "selector": "#q", "value": "gh-1",
+                                      "field": None, "to_selector": None}]})
     step = store.load("old").steps[0]
     assert step.selector == "#q"
     assert not hasattr(step, "to_selector") and not hasattr(step, "field")

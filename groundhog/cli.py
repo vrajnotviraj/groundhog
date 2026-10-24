@@ -1,94 +1,82 @@
 """groundhog — AI-authored, deterministically-replayed web tests."""
 
 import json
+import re
+import secrets
+import time
+import uuid
+from contextlib import contextmanager
 from datetime import datetime, timezone
 
 import typer
-from dotenv import dotenv_values
 from rich.console import Console
 from rich.markup import escape
 from rich.table import Table
 
-from groundhog import config
+from groundhog import config, db, events
 from groundhog.cases import store
+from groundhog.checks import (
+    REQUIRED,
+    check_app,
+    check_chromium,
+    check_env,
+    check_jev,
+    check_login,
+    check_mongo,
+    placeholders,
+)
 
 app = typer.Typer(no_args_is_help=True, add_completion=False)
 flow_app = typer.Typer(no_args_is_help=True, add_completion=False)
+db_app = typer.Typer(no_args_is_help=True, add_completion=False)
 app.add_typer(flow_app, name="flow", help="Chain saved cases: shared vars, always-run cleanup.")
+app.add_typer(db_app, name="db", help="The Mongo database the console reads.")
 console = Console()
-
-REQUIRED = ["BASE_URL", "LOGIN_USER", "LOGIN_PASS", "LOGIN_WORKSPACE", "TYPESAFE_API_KEY"]
+RUN_ID = typer.Option(None, help="id of the run document to write events to; created when omitted")
 
 
 def _parse_vars(pairs: list[str]) -> dict[str, str]:
     return dict(p.split("=", 1) for p in pairs)
 
 
-# --- init checks: each returns (ok, line to print after the mark) ---
-
-def placeholders() -> dict[str, str]:
-    """The values shipped in .env.example, so init can tell an unedited copy apart."""
-    try:
-        return dict(dotenv_values(config.ROOT / ".env.example"))
-    except OSError:
-        return {}
-
-
-def check_env(name: str, value: str, placeholder: str | None) -> tuple[bool, str]:
-    if not value:
-        return False, f"{name} not set — edit .env"
-    if placeholder and value == placeholder:
-        return False, f"{name} still the placeholder — edit .env"
-    return True, name
-
-
-def check_chromium() -> tuple[bool, str]:
-    from playwright.sync_api import sync_playwright
-
-    try:
-        with sync_playwright() as p:
-            p.chromium.launch().close()
-    except Exception:
-        return False, "Chromium — run: uv run playwright install chromium"
-    return True, "Chromium launches"
-
-
-def check_app() -> tuple[bool, str]:
-    import httpx
-
-    try:
-        httpx.get(config.BASE_URL, follow_redirects=True, timeout=8)
-    except Exception as e:
-        return False, f"app unreachable ({config.BASE_URL}) — {e}"
-    return True, f"app reachable ({config.BASE_URL})"
-
-
-def check_jev() -> tuple[bool, str]:
-    from groundhog import jev
-
-    try:
-        p = jev.ping()
-    except Exception as e:
-        return False, f"Jev — {e}"
-    return True, f"Jev reachable ({p['model']}, {p['latency_ms']}ms)"
-
-
-def check_login() -> tuple[bool, str]:
-    from groundhog.browser.session import Session
-
-    try:
-        with Session() as s:
-            s.ensure_logged_in()
-            return True, (f"logged in as {config.LOGIN_USER} · workspace {s.ws} "
-                          f"({config.LOGIN_WORKSPACE}) · session cached in .auth/")
-    except Exception as e:
-        return False, f"login — {e}"
-
-
 def inventory() -> str:
-    cases = len(list(config.CASES_DIR.glob("*.json"))) if config.CASES_DIR.exists() else 0
-    flows = len(list(config.FLOWS_DIR.glob("*.json"))) if config.FLOWS_DIR.exists() else 0
-    return f"cases/: {cases} saved · flows/: {flows} saved"
+    return f"cases: {db.cases().count_documents({})} · flows: {db.flows().count_documents({})}"
+
+
+@contextmanager
+def recorded(run_id: str | None, kind: str, target: str, vars: dict, intent: str | None = None):
+    """Open a run document for the command, close it as error if the command raises, end on its id."""
+    if not re.match(store.NAME, target):
+        console.print(f"[red]{escape(target)} is not a valid name: use lowercase letters, digits and dashes[/]")
+        raise typer.Exit(2)
+    run_id = events.start(run_id, kind, target, vars, intent)
+    try:
+        yield
+    except typer.Exit:
+        raise
+    except RuntimeError as e:
+        events.finish("error", error=str(e))
+        console.print(f"[red]{escape(str(e))}[/]")
+        raise typer.Exit(2)
+    except (Exception, KeyboardInterrupt) as e:
+        events.finish("error", error=str(e) or type(e).__name__)
+        raise
+    finally:
+        console.print(f"run {run_id}", highlight=False)
+
+
+def saved(load, name: str):
+    """Load a saved case or flow, or end the command with one red line when there is none."""
+    try:
+        return load(name)
+    except KeyError as e:
+        console.print(f"[red]{escape(e.args[0])}[/]")
+        events.finish("error", error=e.args[0])
+        raise typer.Exit(1)
+
+
+def verdict(passed: bool) -> str:
+    return "[green]PASSED[/]" if passed else "[red]FAILED[/]"
 
 
 @app.command()
@@ -124,6 +112,8 @@ def init():
     line(app_ok, detail)
     jev_ok, detail = check_jev()
     line(jev_ok, detail)
+    mongo_ok, detail = check_mongo()
+    line(mongo_ok, detail)
 
     login_ok = env_ok and chromium_ok and app_ok
     if login_ok:
@@ -134,38 +124,40 @@ def init():
 
     console.print(f"  [dim]·[/] {inventory()}")
     console.print("\nNext:\n"
+                  "  ./start.sh   starts the console\n"
                   '  uv run groundhog new "create an SMS template named {{name}} and verify it appears '
                   'in the templates list" --name my-first-case --var name=gh-1\n'
                   "  uv run groundhog run my-first-case --var name=gh-2\n"
                   "  uv run groundhog flow run template-lifecycle", markup=False)
-    raise typer.Exit(0 if env_ok and chromium_ok and app_ok and jev_ok and login_ok else 1)
+    raise typer.Exit(0 if env_ok and chromium_ok and app_ok and jev_ok and mongo_ok and login_ok else 1)
 
 
 @app.command()
 def run(name: str, var: list[str] = typer.Option([], help="template var, e.g. --var name=gh-test"),
         no_heal: bool = typer.Option(False, help="fail instead of trying to heal a drifted step"),
-        headed: bool = typer.Option(False, help="show the browser")):
+        headed: bool = typer.Option(False, help="show the browser"), run_id: str = RUN_ID):
     """Replay a saved case — static, zero AI until something drifts."""
     from groundhog.browser.session import Session
     from groundhog.runner.replay import run_case
-    from groundhog.runner.report import write_report
 
-    case = store.load(name)
     vars = _parse_vars(var)
-    if missing := store.missing_vars(case, vars):
-        # A bare run types literal {{braces}} into the app; a fresh per-run value is
-        # what a create-style case wants. Delete-style cases need a real --var.
-        stamp = datetime.now(timezone.utc).strftime("%H%M%S")
-        vars |= {m: f"gh-{stamp}" for m in missing}
-        console.print("[dim]using " + " ".join(f"--var {m}=gh-{stamp}" for m in missing) + "[/]")
-    with Session(headless=not headed) as session:
-        session.ensure_logged_in()
-        result = run_case(case, session, vars=vars, heal=not no_heal)
+    with recorded(run_id, "run", name, vars):
+        case = saved(store.load, name)
+        if missing := store.missing_vars(case, vars):
+            # A bare run types literal {{braces}} into the app; a fresh per-run value is
+            # what a create-style case wants. Delete-style cases need a real --var.
+            stamp = datetime.now(timezone.utc).strftime("%H%M%S")
+            vars |= {m: f"gh-{stamp}" for m in missing}
+            events.record(vars=vars)
+            console.print("[dim]using " + " ".join(f"--var {m}=gh-{stamp}" for m in missing) + "[/]")
+        with Session(headless=not headed) as session:
+            session.ensure_logged_in()
+            result = run_case(case, session, vars=vars, heal=not no_heal)
 
-    report = write_report(result)
-    console.print(f"\n[{'green' if result.passed else 'red'}]{'PASSED' if result.passed else 'FAILED'}[/] "
-                  f"in {result.total_ms}ms · {result.healed} healed · report: {report}")
-    raise typer.Exit(0 if result.passed else 1)
+        events.finish("passed" if result.passed else "failed", total_ms=result.total_ms,
+                      healed=result.healed, modes=[s.mode for s in result.steps])
+        console.print(f"\n{verdict(result.passed)} in {result.total_ms}ms · {result.healed} healed")
+        raise typer.Exit(0 if result.passed else 1)
 
 
 @app.command()
@@ -174,27 +166,30 @@ def new(intent: str, name: str = typer.Option(None, help="case name (kebab-case)
                                                "the saved case is re-parameterized automatically"),
         start: str = typer.Option("/:ws/home", help="path to open before the agent starts"),
         verify: bool = typer.Option(False, help="after saving, replay the case once to prove it works"),
-        headed: bool = typer.Option(False, help="show the browser")):
+        headed: bool = typer.Option(False, help="show the browser"), run_id: str = RUN_ID):
     """Author a new case from a natural-language intent (agentic, one-time cost)."""
-    from groundhog.agent.author import author_case
+    from groundhog.agent.author import _derive_name, author_case, verify_case
 
     parsed = _parse_vars(var)
-    try:
+    name = name or _derive_name(intent)
+    clock = time.monotonic()
+    with recorded(run_id, "author", name, parsed, intent):
         case = author_case(intent, name=name, headless=not headed, vars=parsed, start=start)
-    except RuntimeError as e:
-        console.print(f"[red]{escape(str(e))}[/]")
-        raise typer.Exit(2)
 
-    if verify:
-        from groundhog.agent.author import verify_case
-
-        result = verify_case(case, vars=parsed, headless=not headed)
-        if not result.passed:
+        modes, passed = [], True
+        if verify:
+            result = verify_case(case, vars=parsed, headless=not headed)
+            modes, passed = [s.mode for s in result.steps], result.passed
+        events.finish("passed" if passed else "failed", total_ms=int((time.monotonic() - clock) * 1000),
+                      healed=0, modes=modes)
+        if not passed:
             broken = "; ".join(s.description for s in result.steps if s.mode == "failed") or "see steps above"
             console.print(f"[red]verification failed[/] — {case.name} is saved but did not replay cleanly: {broken}. "
                           "Run `groundhog run` to let it heal, or edit the case JSON.")
             raise typer.Exit(1)
-        console.print(f"[green]verified[/] {case.name} replays cleanly against fresh data")
+        if verify:
+            console.print(f"[green]verified[/] {case.name} replays cleanly against fresh data")
+        console.print(f"\n{verdict(True)} {case.name} saved")
 
 
 @app.command("list")
@@ -209,44 +204,47 @@ def list_():
 @app.command()
 def show(name: str):
     """Print a case JSON."""
-    console.print_json(json.dumps(store.load(name).model_dump()))
+    console.print_json(json.dumps(saved(store.load, name).model_dump()))
 
 
 @flow_app.command("run")
 def flow_run(name: str, var: list[str] = typer.Option([], help="shared template var, e.g. --var name=gh-test"),
              no_heal: bool = typer.Option(False, help="fail instead of trying to heal a drifted step"),
-             headed: bool = typer.Option(False, help="show the browser")):
+             headed: bool = typer.Option(False, help="show the browser"), run_id: str = RUN_ID):
     """Replay a flow: chain cases in one session, then cleanup — always."""
     from groundhog.browser.session import Session
     from groundhog.runner.flow import run_flow
-    from groundhog.runner.report import write_flow_report
 
-    flow = store.load_flow(name)
-    with Session(headless=not headed) as session:
-        session.ensure_logged_in()
-        result = run_flow(flow, session, vars=_parse_vars(var), heal=not no_heal)
+    vars = _parse_vars(var)
+    with recorded(run_id, "flow", name, vars):
+        flow = saved(store.load_flow, name)
+        with Session(headless=not headed) as session:
+            session.ensure_logged_in()
+            result = run_flow(flow, session, vars=vars, heal=not no_heal)
 
-    report = write_flow_report(result)
-    console.print(f"\n[{'green' if result.passed else 'red'}]{'PASSED' if result.passed else 'FAILED'}[/] "
-                  f"in {result.total_ms}ms · {len(result.runs)} case(s) · report: {report}")
-    raise typer.Exit(0 if result.passed else 1)
+        ran = [cr.result for cr in result.runs if cr.result]
+        events.finish("passed" if result.passed else "failed", total_ms=result.total_ms,
+                      healed=sum(r.healed for r in ran), modes=[s.mode for r in ran for s in r.steps])
+        console.print(f"\n{verdict(result.passed)} in {result.total_ms}ms · {len(result.runs)} case(s)")
+        raise typer.Exit(0 if result.passed else 1)
 
 
 @flow_app.command("new")
 def flow_new(intent: str, name: str = typer.Option(None, help="flow name (kebab-case); derived from intent if omitted"),
-             headed: bool = typer.Option(False, help="show the browser")):
+             headed: bool = typer.Option(False, help="show the browser"), run_id: str = RUN_ID):
     """Compose a flow from English: reuse saved cases, author the missing ones
     live in one pass, then save the flow — later runs are static."""
+    from groundhog.agent.author import _derive_name
     from groundhog.agent.composer import compose_flow
 
-    try:
+    clock = time.monotonic()
+    with recorded(run_id, "compose", name or _derive_name(intent), {}, intent):
         flow = compose_flow(intent, name=name, headless=not headed)
-    except RuntimeError as e:
-        console.print(f"[red]{escape(str(e))}[/]")
-        raise typer.Exit(2)
-    chain = " → ".join(fc.case for fc in flow.chain)
-    cleanup = ", ".join(fc.case for fc in flow.cleanup) or "none"
-    console.print(f"\n[green]saved[/] flows/{flow.name}.json — chain: {chain} · cleanup: {cleanup} · vars: {flow.vars}")
+        events.record(target=flow.name)
+        events.finish("passed", total_ms=int((time.monotonic() - clock) * 1000), healed=0, modes=[])
+        chain = " → ".join(fc.case for fc in flow.chain)
+        cleanup = ", ".join(fc.case for fc in flow.cleanup) or "none"
+        console.print(f"\n{verdict(True)} saved {flow.name} — chain: {chain} · cleanup: {cleanup} · vars: {flow.vars}")
 
 
 @flow_app.command("list")
@@ -257,6 +255,35 @@ def flow_list():
         table.add_row(f.name, " → ".join(fc.case for fc in f.chain),
                       ", ".join(fc.case for fc in f.cleanup), json.dumps(f.vars), f.intent)
     console.print(table)
+
+
+@db_app.command("seed")
+def db_seed():
+    """Create the indexes and the first admin."""
+    from groundhog.passwords import hash_password
+
+    db.ensure_indexes()
+    console.print(inventory(), highlight=False)
+
+    if db.users().count_documents({}):
+        return
+    if not config.ADMIN_EMAIL:
+        console.print("[red]ADMIN_EMAIL not set — add it to .env to create the first admin[/]")
+        raise typer.Exit(1)
+    password = config.ADMIN_PASSWORD or secrets.token_urlsafe(12)
+    db.users().insert_one({"_id": uuid.uuid4().hex, "email": config.ADMIN_EMAIL, "role": "admin",
+                           "password_hash": hash_password(password), "created_at": events.now()})
+    console.print(f"created admin {config.ADMIN_EMAIL}", highlight=False)
+    if not config.ADMIN_PASSWORD:
+        console.print(f"generated password (shown once): {password}", markup=False, highlight=False)
+
+
+@app.command()
+def serve(port: int = typer.Option(8000, help="port to listen on")):
+    """Serve the console and its API."""
+    import uvicorn
+
+    uvicorn.run("groundhog.api.app:app", port=port)
 
 
 if __name__ == "__main__":

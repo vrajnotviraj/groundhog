@@ -12,15 +12,12 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Literal
 
-from rich.console import Console
-
+from groundhog import events
 from groundhog.browser.session import Session
 from groundhog.cases import store
 from groundhog.cases.schema import Flow, FlowCase
 from groundhog.cases.store import render
 from groundhog.runner.replay import RunResult, run_case
-
-console = Console()
 
 
 @dataclass
@@ -65,6 +62,20 @@ def _load_case(fc: FlowCase):
         return None, str(e)
 
 
+def _run_one(fc: FlowCase, stage: str, session: Session, shared: dict[str, str], heal: bool) -> CaseRun:
+    """Run one case of the flow between a case start and a case end event."""
+    events.emit("case", phase="start", case=fc.case, stage=stage)
+    case, err = _load_case(fc)
+    if case is None:
+        events.emit("case", phase="end", case=fc.case, stage=stage, passed=False,
+                    error=f"could not load case — {err}")
+        return CaseRun(fc.case, stage, None, error=err)
+    r = run_case(case, session, vars=case_vars(shared, fc), heal=heal)
+    events.emit("case", phase="end", case=fc.case, stage=stage, passed=r.passed,
+                healed=r.healed, total_ms=r.total_ms)
+    return CaseRun(fc.case, stage, r)
+
+
 def run_flow(flow: Flow, session: Session, vars: dict[str, str] | None = None,
              heal: bool = True) -> FlowResult:
     shared = shared_vars(flow, vars)
@@ -74,28 +85,16 @@ def run_flow(flow: Flow, session: Session, vars: dict[str, str] | None = None,
     chain_failed = False
     for fc in flow.chain:
         if chain_failed:
-            console.print(f"\n[dim]skipped[/] {fc.case} — an earlier chain case failed")
+            events.emit("case", phase="start", case=fc.case, stage="chain")
+            events.emit("case", phase="end", case=fc.case, stage="chain", passed=False,
+                        error="skipped — an earlier chain case failed")
             result.runs.append(CaseRun(fc.case, "chain", None))
             continue
-        console.print(f"\n[bold]{fc.case}[/]")
-        case, err = _load_case(fc)
-        if case is None:
-            console.print(f"  [red]✗[/] could not load case — {err}")
-            result.runs.append(CaseRun(fc.case, "chain", None, error=err))
-            chain_failed = True
-            continue
-        r = run_case(case, session, vars=case_vars(shared, fc), heal=heal)
-        result.runs.append(CaseRun(fc.case, "chain", r))
-        chain_failed = not r.passed
+        cr = _run_one(fc, "chain", session, shared, heal)
+        result.runs.append(cr)
+        chain_failed = cr.result is None or not cr.result.passed
     for fc in flow.cleanup:
-        console.print(f"\n[bold]{fc.case}[/] [dim](cleanup)[/]")
-        case, err = _load_case(fc)
-        if case is None:
-            console.print(f"  [red]✗[/] could not load case — {err}")
-            result.runs.append(CaseRun(fc.case, "cleanup", None, error=err))
-            continue
-        r = run_case(case, session, vars=case_vars(shared, fc), heal=heal)
-        result.runs.append(CaseRun(fc.case, "cleanup", r))
+        result.runs.append(_run_one(fc, "cleanup", session, shared, heal))
 
     # Leftover data is a real failure: a cleanup miss fails the flow too.
     result.passed = all(cr.result is not None and cr.result.passed for cr in result.runs)

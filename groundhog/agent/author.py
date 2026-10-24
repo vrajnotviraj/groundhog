@@ -4,16 +4,12 @@ The loop runs the real app once. Every accepted action becomes a trace entry wit
 verified durable selector; the trace becomes a Case that later replays with zero AI.
 """
 
-import json
 import re
 import time
 from datetime import datetime, timezone
 from urllib.parse import parse_qsl, urlsplit
 
-from rich.console import Console
-from rich.markup import escape
-
-from groundhog import config, jev
+from groundhog import config, events, jev
 from groundhog.agent import text
 from groundhog.browser.actions import Ctx, goto_app, on_picker, perform, recover_workspace, resolve_path, settle
 from groundhog.browser.session import Session
@@ -21,8 +17,6 @@ from groundhog.browser.snapshot import observe, selectors_for
 from groundhog.cases.schema import Assertion, Case, Expect, Step
 from groundhog.cases.store import render, save
 from groundhog.config import ws_path
-
-console = Console()
 
 ACTIONS = {"CLICK": "click", "HOVER": "hover", "TYPE": "fill", "PRESS_ENTER": "press"}
 SEPARATORS = (", then ", " then ", ", and ", " and ", ", ")
@@ -61,16 +55,6 @@ def _templatize(obj, vars: dict[str, str] | None):
 def _derive_name(intent: str) -> str:
     words = re.findall(r"[a-z0-9]+", intent.lower())
     return "-".join(words[:5]) or "case"
-
-
-def _dump_partial(name: str, trace: list[dict]) -> str:
-    """The loop is the expensive part of authoring; when it stops short, park the
-    recorded actions in runs/ so they can be inspected or salvaged instead of re-paid."""
-    config.RUNS_DIR.mkdir(exist_ok=True)
-    ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
-    path = config.RUNS_DIR / f"{name}-partial-{ts}.json"
-    path.write_text(json.dumps(trace, indent=2) + "\n")
-    return str(path)
 
 
 def _clauses(intent: str) -> list[str]:
@@ -152,11 +136,10 @@ def _observe_changed(page, before, timeout_ms: int = 2000):
         page.wait_for_timeout(250)
 
 
-def _decision_line(d) -> str:
-    label = d.element.label if d.element else ""
-    line = f"{d.operation.lower():<6} {label}  (p {d.probability:.2f} · {d.latency_ms}ms)"
-    # A hesitant pick shows its runners-up, so a stalled run explains itself.
-    return line if d.probability >= 0.7 or not d.detail else f"{line}\n         {d.detail}"
+def _emit_decision(d, detail: str | None = None) -> None:
+    events.emit("decision", operation=d.operation, label=d.element.label if d.element else "",
+                probability=d.probability, confidence=d.confidence, latency_ms=d.latency_ms,
+                detail=detail or d.detail)
 
 
 def run_executor(page, ctx: Ctx, goal: str, outcomes: list[str], candidates: list[dict],
@@ -184,7 +167,7 @@ def run_executor(page, ctx: Ctx, goal: str, outcomes: list[str], candidates: lis
             failures += 1
             history.append(_entry("NONE", "decision failed", error=str(e).splitlines()[0]))
             continue
-        console.print(f"  [cyan]→[/] {escape(_decision_line(d))}")
+        _emit_decision(d)
 
         if d.operation in ("DONE", "WAIT", "NONE", "BLOCKED"):
             # Code owns the finish line: whenever Jev is unsure, check the goal's
@@ -219,7 +202,7 @@ def run_executor(page, ctx: Ctx, goal: str, outcomes: list[str], candidates: lis
                      and el.state.get("disabled") != "true" and (el.frame, el.node) not in exclude]
             if d.wanted == "TYPE" and len(empty) == 1:
                 d = jev.Decision("TYPE", empty[0], d.confidence, d.probability, d.latency_ms, d.detail)
-                console.print(f"  [cyan]→[/] {escape(_decision_line(d))} [dim]the only empty field[/]")
+                _emit_decision(d, "the only empty field")
             else:
                 failures += 1
                 history.append(_entry("NONE", "no fitting target"))
@@ -269,7 +252,8 @@ def run_executor(page, ctx: Ctx, goal: str, outcomes: list[str], candidates: lis
             perform(page, step, ctx)
         except Exception as e:
             error = str(e).splitlines()[0]
-            console.print(f"  [red]✗[/] {escape(error)}")
+            events.emit("action", action=step.action, description=step.description, value=step.value,
+                        ok=False, error=error)
             failures += 1
             history.append(_entry(op, step.description, step.value, error=error))
             if el is not None:
@@ -291,6 +275,8 @@ def run_executor(page, ctx: Ctx, goal: str, outcomes: list[str], candidates: lis
                       "decision": {"operation": op, "probability": d.probability,
                                    "confidence": d.confidence, "latency_ms": d.latency_ms}})
         history.append(_entry(op, step.description, step.value, page_changed=changed))
+        events.emit("action", action=step.action, description=step.description, value=step.value, ok=True)
+        events.shot(page)
         failures = 0
         if step.action == "fill":
             last_fill = step
@@ -340,17 +326,19 @@ def _drive(session: Session, intent: str, name: str, vars: dict[str, str] | None
                                  _candidates(live_intent, vars), budget, trace)
     except Exception:
         if trace:
-            console.print(f"[yellow]partial trace saved: {_dump_partial(name, trace)}[/]")
+            events.record(partial_trace=trace)
+            events.emit("note", level="warn", text="partial trace kept on the run")
         raise
     if reason != "done":
+        events.record(partial_trace=trace)
         raise RuntimeError(f"authoring stopped ({reason}) before the goal was verified — "
-                           f"partial trace: {_dump_partial(name, trace)}")
+                           "partial trace kept on the run")
 
     case = _assemble(name, intent, trace, outcomes, vars, start, observe(page).text)
     case.meta.created_at = datetime.now(timezone.utc).isoformat()
     save(case)
-    console.print(f"[green]saved[/] cases/{name}.json — {len(case.steps)} steps, "
-                  f"{len(case.assertions)} assertions")
+    events.emit("note", level="info", text=f"saved {name} — {len(case.steps)} steps, "
+                                            f"{len(case.assertions)} assertions")
     return case
 
 
@@ -380,13 +368,13 @@ def verify_case(case: Case, vars: dict[str, str] | None = None, headless: bool =
     from groundhog.runner.replay import run_case
 
     fresh = _verify_vars(vars, int(datetime.now(timezone.utc).timestamp()))
-    console.print(f"[cyan]verify[/] replaying {case.name} once against fresh data"
-                  + (f" ({', '.join(fresh.values())})" if fresh else ""))
+    events.emit("note", level="info", text=f"verify: replaying {case.name} once against fresh data"
+                + (f" ({', '.join(fresh.values())})" if fresh else ""))
     with Session(headless=headless) as session:
         session.ensure_logged_in()
         result = run_case(case, session, vars=fresh, heal=False)
     if fresh:
-        console.print("[yellow]note[/] verification created extra data "
-                      f"({', '.join(fresh.values())}) — this repo pairs creates with deletes "
-                      "at the flow level, not per case, so you may want to clean it up.")
+        events.emit("note", level="warn", text="verification created extra data "
+                    f"({', '.join(fresh.values())}) — this repo pairs creates with deletes "
+                    "at the flow level, not per case, so you may want to clean it up.")
     return result

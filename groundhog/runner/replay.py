@@ -9,22 +9,16 @@ they are judged by Jev on the final page.
 
 import re
 import time
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from typing import Literal
 
-from rich.console import Console
-from rich.markup import escape
-
-from groundhog import config, jev
+from groundhog import config, events, jev
 from groundhog.browser.actions import Ctx, check_expects, goto_app, perform, resolve_path, run_step, settle
 from groundhog.browser.session import Session
 from groundhog.browser.snapshot import observe, selectors_for
 from groundhog.cases.schema import Assertion, Case, Expect, Heal
 from groundhog.cases.store import render, save
-
-console = Console()
-MODE_STYLE = {"static": "dim", "fallback": "yellow", "healed": "magenta", "failed": "red", "skipped": "dim"}
 
 # A heal that flips a step's intent is worse than a failed step: it can delete
 # the wrong thing or silently skip the action the test exists for.
@@ -152,16 +146,15 @@ def run_case(case: Case, session: Session, vars: dict[str, str] | None = None,
                 s = StepResult(step.id, step.description, "failed", selector, ms, outcome.drift, error)
                 aborted = True  # linear flows can't recover once a step leaves the wrong state
         result.steps.append(s)
-        style = MODE_STYLE.get(s.mode, "")
-        console.print(f"  [{style}]{s.mode:>8}[/] {i}. {escape(s.description)}"
-                      + (f" [red]— {escape(s.error)}[/]" if s.error else ""))
+        events.emit("step", i=i, **asdict(s))
+        if s.mode != "skipped":
+            events.shot(page)
 
     if not aborted:
         for a in case.assertions:
             r = _check_deterministic(page, a, ctx) if a.mode == "deterministic" else _judge(page, case, a, ctx)
             result.assertions.append(r)
-            mark = "[green]✓[/]" if r.passed else "[red]✗[/]"
-            console.print(f"  {mark} {escape(r.assertion)} — {escape(r.reasoning)}")
+            events.emit("assertion", **asdict(r))
 
     result.healed = len(healed_steps)
     result.passed = (not aborted

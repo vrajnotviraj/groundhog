@@ -1,5 +1,3 @@
-import json
-import pathlib
 import types
 from types import SimpleNamespace
 
@@ -154,32 +152,6 @@ def test_judge_failure_becomes_a_failed_assertion(monkeypatch):
     assert not r.passed and "unavailable" in r.reasoning
 
 
-def test_reports_write_markdown_and_json_with_usage(monkeypatch, tmp_path):
-    # A run report must survive a fully static run (no AI usage) and a flow shape
-    # where a case never ran at all.
-    from groundhog.runner import flow, report
-
-    monkeypatch.setattr(config, "RUNS_DIR", tmp_path)
-    monkeypatch.setattr(report.jev, "usage_snapshot", lambda: None)
-    monkeypatch.setattr(report.client, "usage_snapshot", lambda: None)
-    run = replay.RunResult(case="c", passed=True, started_at="now", total_ms=12, steps=[
-        replay.StepResult(id="s1", description="click button Create", mode="static", selector="#a", ms=5),
-    ], assertions=[replay.AssertionResult(assertion="x", mode="jev", passed=True,
-                                          reasoning="jev p=0.90", confidence=0.9)])
-
-    md = pathlib.Path(report.write_report(run))
-    assert "Zero AI calls" in md.read_text() and "click button Create" in md.read_text()
-    assert json.loads(md.with_suffix(".json").read_text())["usage"] == {}
-
-    monkeypatch.setattr(report.jev, "usage_snapshot", lambda: {"calls": 1})
-    fr = flow.FlowResult(flow="f", passed=False, started_at="now", runs=[
-        flow.CaseRun(name="c", stage="chain", result=run),
-        flow.CaseRun(name="gone", stage="cleanup", result=None, error="no such case"),
-    ])
-    text = pathlib.Path(report.write_flow_report(fr)).read_text()
-    assert "## c (chain) — PASSED" in text and "could not run: no such case" in text and '"calls": 1' in text
-
-
 def test_compound_assertion_is_judged_clause_by_clause():
     assert replay._clauses("the event named gh-1 has the template gh-1 selected and is mapped to the route gh-1") == [
         "the event named gh-1 has the template gh-1 selected", "is mapped to the route gh-1"]
@@ -199,3 +171,19 @@ def test_negated_outcome_about_an_absent_value_needs_no_judge():
     present = SimpleNamespace(text="G gh-1\nAccounts 1 / 5", elements=[])
     assert not replay._absent(["gh-1 no longer appears in the accounts list"], present, ctx)
     assert not replay._absent(["gh-1 appears in the list"], snap, ctx)  # positive outcomes still go to Jev
+
+
+def test_run_case_emits_a_shot_after_each_step_it_ran_but_not_a_skipped_one(monkeypatch):
+    from groundhog import db, events
+
+    monkeypatch.setattr(replay, "save", lambda case: None)
+    monkeypatch.setattr(replay, "goto_app", lambda page, url: None)
+    monkeypatch.setattr(replay, "run_step", lambda page, step, ctx: StepOutcome(
+        ok=False, mode="failed", selector="#a", error="gone"))
+    page = SimpleNamespace(screenshot=lambda **kw: b"jpeg")
+    case = Case(name="c", intent="i", steps=[Step(id="s1", action="click", selector="#a"),
+                                             Step(id="s2", action="click", selector="#b")])
+    run_id = events.start(None, "run", "c", {})
+    replay.run_case(case, SimpleNamespace(page=page, ws="FY1"), heal=False)
+    kinds = [e["kind"] for e in db.runs().find_one({"_id": run_id})["events"]]
+    assert kinds == ["step", "shot", "step"]

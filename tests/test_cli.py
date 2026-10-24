@@ -1,9 +1,12 @@
-"""init's env/.env checks and its summary line, without a browser or network."""
+"""init's env/.env checks, its summary line and db seed, without a browser or network."""
 
 import pytest
 import typer
 
-from groundhog import cli, config
+from groundhog import cli, config, db
+from groundhog.cases import store
+from groundhog.cases.schema import Case, Flow
+from groundhog.passwords import verify_password
 
 EXAMPLE = (
     "BASE_URL=https://app.example.com\n"
@@ -20,8 +23,6 @@ EXAMPLE = (
 def home(tmp_path, monkeypatch):
     (tmp_path / ".env.example").write_text(EXAMPLE)
     monkeypatch.setattr(config, "ROOT", tmp_path)
-    monkeypatch.setattr(config, "CASES_DIR", tmp_path / "cases")
-    monkeypatch.setattr(config, "FLOWS_DIR", tmp_path / "flows")
     return tmp_path
 
 
@@ -47,13 +48,11 @@ def test_empty_placeholder_does_not_shadow_a_real_key():
     assert cli.check_env("TYPESAFE_API_KEY", "sk-abc", "") == (True, "TYPESAFE_API_KEY")
 
 
-def test_inventory_counts_saved_files(home):
-    (home / "cases").mkdir()
-    (home / "flows").mkdir()
+def test_inventory_counts_mongo_documents():
     for n in ("a", "b", "c"):
-        (home / "cases" / f"{n}.json").write_text("{}")
-    (home / "flows" / "f.json").write_text("{}")
-    assert cli.inventory() == "cases/: 3 saved · flows/: 1 saved"
+        store.save(Case(name=n, intent="i", steps=[]))
+    store.save_flow(Flow(name="f", chain=["a"]))
+    assert cli.inventory() == "cases: 3 · flows: 1"
 
 
 def test_init_creates_env_and_stops(home, capsys):
@@ -83,7 +82,7 @@ def test_init_reports_placeholders_and_exits_1(home, monkeypatch, capsys):
     assert "TYPESAFE_API_KEY not set" in out
     assert "✓ LOGIN_USER" in out
     assert "login — skipped" in out
-    assert "cases/: 0 saved · flows/: 0 saved" in out
+    assert "cases: 0 · flows: 0" in out
     assert "Next:" in out
 
 
@@ -135,3 +134,62 @@ def test_init_survives_brackets_in_a_check_message(home, monkeypatch, capsys):
         cli.init()
     assert e.value.exit_code == 1
     assert '[{"detail": "bad"}]' in capsys.readouterr().out
+
+
+def test_db_seed_creates_the_admin_once(monkeypatch, capsys):
+    monkeypatch.setattr(config, "ADMIN_EMAIL", "admin@example.com")
+    monkeypatch.setattr(config, "ADMIN_PASSWORD", "groundhog-dev")
+    cli.db_seed()
+    cli.db_seed()
+    out = capsys.readouterr().out
+    assert out.count("created admin admin@example.com") == 1 and "generated password" not in out
+    user = db.users().find_one()
+    assert user["role"] == "admin" and verify_password("groundhog-dev", user["password_hash"])
+
+
+def test_db_seed_needs_an_admin_email(monkeypatch):
+    monkeypatch.setattr(config, "ADMIN_EMAIL", "")
+    with pytest.raises(typer.Exit):
+        cli.db_seed()
+    assert db.users().count_documents({}) == 0
+
+
+def test_db_seed_prints_a_generated_password_once(monkeypatch, capsys):
+    monkeypatch.setattr(config, "ADMIN_EMAIL", "admin@example.com")
+    monkeypatch.setattr(config, "ADMIN_PASSWORD", "")
+    cli.db_seed()
+    password = capsys.readouterr().out.split("generated password (shown once): ")[1].split()[0]
+    assert verify_password(password, db.users().find_one()["password_hash"])
+    cli.db_seed()
+    assert "generated password" not in capsys.readouterr().out
+
+
+def test_an_unknown_case_is_one_line_not_a_traceback(capsys):
+    with pytest.raises(typer.Exit) as e:
+        cli.show("no-such-case")
+    assert e.value.exit_code == 1
+    assert capsys.readouterr().out.strip() == "no saved case named no-such-case"
+
+
+def test_recorded_rejects_a_bad_name_before_opening_a_run():
+    with pytest.raises(typer.Exit) as e, cli.recorded(None, "run", "Bad Name", {}):
+        pass
+    assert e.value.exit_code == 2
+    assert db.runs().count_documents({}) == 0
+
+
+def test_recorded_closes_a_runtime_error_as_one_red_line_and_ends_on_the_run_id(capsys):
+    with pytest.raises(typer.Exit) as e, cli.recorded("abc123abc123", "author", "new-case", {}):
+        raise RuntimeError("authoring stopped (budget)")
+    assert e.value.exit_code == 2
+    run = db.runs().find_one()
+    assert (run["status"], run["error"]) == ("error", "authoring stopped (budget)")
+    assert capsys.readouterr().out.strip().splitlines()[-1] == "run abc123abc123"
+
+
+@pytest.mark.parametrize("raised, error", [(ValueError("boom"), "boom"), (KeyboardInterrupt(), "KeyboardInterrupt")])
+def test_recorded_closes_any_other_exception_as_error_and_reraises(raised, error):
+    with pytest.raises(type(raised)), cli.recorded(None, "run", "a-case", {}):
+        raise raised
+    run = db.runs().find_one()
+    assert (run["status"], run["error"]) == ("error", error)
