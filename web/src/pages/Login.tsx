@@ -10,6 +10,7 @@ import styles from './Login.module.css'
 export function Login() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [shy, setShy] = useState(false)
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const login = useMutation({
@@ -25,7 +26,9 @@ export function Login() {
   }
   return (
     <main className={styles.page}>
-      <Mascot className={styles.mascot} />
+      <Mascot mood={shy ? 'shy' : 'happy'} watch className={styles.mascot}>
+        <p className={styles.pitch}>Same steps, every day. Zero AI until something drifts.</p>
+      </Mascot>
       <form className={`tile ${styles.form}`} onSubmit={submit}>
         <h1 className={styles.wordmark}>groundhog</h1>
         <p className="muted">Sign in to see what your cases did.</p>
@@ -34,7 +37,7 @@ export function Login() {
         </Field>
         <Field label="Password">
           <input type="password" autoComplete="current-password" required value={password}
-            onChange={(e) => setPassword(e.target.value)} />
+            onFocus={() => setShy(true)} onBlur={() => setShy(false)} onChange={(e) => setPassword(e.target.value)} />
         </Field>
         {login.error && <p className="fail" role="alert">{loginMessage(login.error)}</p>}
         <Button variant="primary" type="submit" disabled={login.isPending}>Sign in</Button>

@@ -5,7 +5,7 @@ test.each([
   ['passed', 'Passed', 'pass'],
   ['failed', 'Failed', 'fail'],
   ['error', 'Error', 'fail'],
-  ['running', 'Running', 'surface-2'],
+  ['running', 'Running', 'sun'],
   ['queued', 'Queued', 'surface-2'],
 ] as const)('%s reads %s on a %s tile', (status, label, tone) => {
   render(<StatusTile status={status} />)

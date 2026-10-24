@@ -11,6 +11,10 @@
   --gh-accent-ink: #FFFFFF;
   --gh-fail: #A8231B;
   --gh-fail-ink: #FFFFFF;
+  /* sunrise: the one contrast hue, on the primary action, live runs and healed steps; ink text on it */
+  --gh-sun: #F5C518;
+  --gh-sun-hover: #FFD43B;
+  --gh-sun-ink: #2A1D17;
 
   /* one tone darker, for hover */
   --gh-surface-hover: #CFC9BC;
@@ -22,13 +26,13 @@
   --gh-code: "JetBrains Mono", ui-monospace, monospace;
   --gh-title: 600 24px/1.25 var(--gh-font);
   --gh-section: 500 16px/1.45 var(--gh-font);
-  --gh-figure: 400 28px/1.15 var(--gh-font);
+  --gh-figure: 500 36px/1.1 var(--gh-font);
   --gh-body: 400 15px/1.45 var(--gh-font);
   --gh-small: 400 13px/1.45 var(--gh-font);
   --gh-mono: 400 13px/1.45 var(--gh-code);
 
   /* shape and motion */
-  --gh-radius: 4px;
+  --gh-radius: 8px;
   --gh-gap: 8px;
   --gh-pad: 16px;
   --gh-row: 48px;
@@ -36,4 +40,5 @@
   --gh-input: 40px;
   --gh-column: 1200px;
   --gh-motion: 150ms;
+  --gh-spring: cubic-bezier(.34, 1.56, .64, 1);
 }

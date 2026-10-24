@@ -1,11 +1,31 @@
-.figures { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--gh-gap); }
-.pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--gh-gap) 16px; align-items: start; }
-.aside { display: flex; align-items: baseline; gap: 16px; }
+/* hero: 2fr verdict + 1fr of 2x2 figures, 8px gutter, both columns end on the canvas edges */
+.hero { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: var(--gh-gap); padding-bottom: 8px; }
+.verdict { display: flex; min-height: 340px; padding: 32px; }
+.verdictText { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; max-width: 58%; }
+.date { font: 500 15px/1.2 var(--gh-font); color: var(--gh-sun); }
+.headline { font: 600 48px/1.02 var(--gh-font); letter-spacing: -0.035em; color: var(--gh-ink-text); }
+.subline { color: var(--gh-surface-2); }
+.run { margin-top: auto; }
+
+.strip { display: flex; flex-wrap: wrap; gap: 4px; padding: 4px 0 0; list-style: none; }
+.strip li { animation: drop 450ms var(--gh-spring) both; }
+.day { display: block; width: 18px; height: 18px; border-radius: 3px; background: var(--gh-surface-2); transition: transform var(--gh-motion) ease-out; }
+.day:hover { transform: translateY(-3px) scale(1.15); }
+.passed { background: var(--gh-accent); }
+.failed, .error { background: var(--gh-fail); }
+.running, .queued { background: var(--gh-sun); animation: blinkDay 1.2s ease-in-out infinite; }
+@keyframes drop { from { opacity: 0; transform: translateY(-14px); } }
+@keyframes blinkDay { 50% { opacity: 0.45; } }
+
+.figures { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-rows: 1fr; gap: var(--gh-gap); }
 
 @media (max-width: 899px) {
-  .pair { grid-template-columns: 1fr; }
+  .hero { grid-template-columns: 1fr; }
+  .verdictText { max-width: 64%; }
 }
 
 @media (max-width: 639px) {
-  .figures { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .verdict { min-height: 420px; padding: 24px 16px; }
+  .verdictText { max-width: none; }
+  .headline { font-size: 36px; }
 }

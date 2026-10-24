@@ -22,11 +22,12 @@ export function Cases() {
   const shown = (cases.data ?? []).filter((c) => `${c.name} ${c.intent}`.toLowerCase().includes(term))
 
   const columns: Column<CaseSummary>[] = [
-    { header: 'Name', role: 'identity', width: 'minmax(0, 2fr)', cell: (c) => <Link to={`/cases/${c.name}`}>{c.name}</Link> },
+    {
+      header: 'Name', role: 'identity', width: 'minmax(0, 2fr)',
+      cell: (c) => <><Link to={`/cases/${c.name}`}>{c.name}</Link>{c.heals > 0 && <span className={styles.heal}>{count(c.heals, 'heal')}</span>}</>,
+    },
     { header: 'Intent', role: 'secondary', width: 'minmax(0, 3fr)', cell: (c) => c.intent },
     { header: 'Steps', width: '72px', align: 'end', role: 'key', cell: (c) => count(c.steps, 'step') },
-    { header: 'Runs', width: '72px', align: 'end', cell: (c) => count(c.runs, 'run') },
-    { header: 'Heals', width: '72px', align: 'end', cell: (c) => count(c.heals, 'heal') },
     { header: 'Last run', width: 'minmax(136px, 1.5fr)', cell: (c) => <LastRun run={c.last_run} /> },
     {
       header: 'Run', width: '40px', role: 'action',
@@ -45,8 +46,8 @@ export function Cases() {
       {run.error && <p className="fail" role="alert">{run.error.message}</p>}
       {cases.isError && <LoadError what="the cases" onRetry={cases.refetch} />}
       {cases.isPending && <LoadingRows />}
-      {cases.data && !cases.data.length && <Empty mascot>No cases yet. Describe one in English and Jev will author it.</Empty>}
-      {cases.data && cases.data.length > 0 && !shown.length && <Empty>No case matches "{search}".</Empty>}
+      {cases.data && !cases.data.length && <Empty>No cases yet. Describe one in English and Jev will author it.</Empty>}
+      {cases.data && cases.data.length > 0 && !shown.length && <Empty mood="worried">No case matches "{search}".</Empty>}
       {shown.length > 0 && <Table label="Cases" columns={columns} rows={shown} rowKey={(c) => c.name} />}
     </>
   )

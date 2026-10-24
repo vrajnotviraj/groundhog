@@ -1,6 +1,9 @@
 .rows { display: grid; gap: var(--gh-gap); }
 .row { display: flex; align-items: center; min-height: var(--gh-row); padding: 0 16px; }
-.bar { display: block; width: 40%; height: 14px; border-radius: 2px; background: var(--gh-surface-2); }
+.bar { display: block; width: 40%; height: 14px; border-radius: 2px; background: var(--gh-surface-2); animation: wait 1.2s ease-in-out infinite; }
+.row:nth-child(2n) .bar { width: 28%; animation-delay: 150ms; }
+@keyframes wait { 50% { opacity: 0.4; } }
 .error { display: flex; align-items: center; gap: 16px; min-height: var(--gh-row); padding: 0 16px; }
+.head { flex: none; width: 32px; height: 32px; }
 .retry { font-weight: 500; }
 .retry:hover { text-decoration: underline; text-underline-offset: 3px; }

@@ -8,6 +8,8 @@ import { Confirm } from '../components/Confirm'
 import { EventLog, groupEvents, stripOf } from '../components/EventLog'
 import { Figure } from '../components/Figure'
 import { LoadError, LoadingRows } from '../components/Loading'
+import type { Mood } from '../components/Groundhog'
+import { Mascot } from '../components/Mascot'
 import { PageTitle } from '../components/PageTitle'
 import { Shot } from '../components/Shot'
 import { StatusTile } from '../components/StatusTile'
@@ -63,6 +65,7 @@ export function Run() {
       </PageTitle>
       {actionError && <p className="fail" role="alert">{actionError.message}</p>}
       <div className={styles.headline}>
+        <Mascot mood={mood(run.status)} className={styles.mascot} />
         <StatusTile status={run.status} size="figure" />
         {modes.length
           ? <StepStrip modes={modes} size="large" onSelect={jump} />
@@ -91,6 +94,11 @@ function subline(run: RunDoc, steps: number): string {
   const parts = [count(steps, 'step'), count(run.ai_calls ?? 0, 'AI call')]
   if (run.total_ms != null) parts.push(duration(run.total_ms))
   return parts.join(' · ')
+}
+
+function mood(status: RunDoc['status']): Mood {
+  if (isLive(status)) return 'dig'
+  return status === 'passed' ? 'happy' : 'worried'
 }
 
 function errorText(error: string, ran: boolean): string {

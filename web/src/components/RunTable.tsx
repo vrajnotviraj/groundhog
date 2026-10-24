@@ -6,12 +6,14 @@ import { StepStrip } from './StepStrip'
 import { Table, type Column } from './Table'
 
 const COLUMNS: Column<RunSummary>[] = [
-  { header: 'Target', role: 'identity', width: 'minmax(0, 2fr)', cell: (r) => <Link to={`/runs/${r.id}`}>{runTitle(r)}</Link> },
+  {
+    header: 'Target', role: 'identity', width: 'minmax(0, 2fr)',
+    cell: (r) => <><Link to={`/runs/${r.id}`}>{runTitle(r)}</Link>{r.kind !== 'run' && <span className="muted"> · {r.kind}</span>}</>,
+  },
   { header: 'Steps', width: 'minmax(0, 2fr)', cell: (r) => (r.modes?.length ? <StepStrip modes={r.modes} /> : null) },
-  { header: 'Kind', width: '80px', cell: (r) => r.kind },
   { header: 'Duration', width: '80px', align: 'end', role: 'key', cell: (r) => duration(r.total_ms) },
   { header: 'When', width: '88px', align: 'end', cell: (r) => ago(r.created_at) },
-  { header: 'Status', width: '80px', role: 'action', cell: (r) => <StatusTile status={r.status} /> },
+  { header: 'Status', width: '88px', role: 'action', cell: (r) => <StatusTile status={r.status} /> },
 ]
 
 // Every list of runs: the strip, the target, how it ended and when.

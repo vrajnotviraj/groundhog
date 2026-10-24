@@ -1,3 +1,4 @@
+import { Groundhog } from './Groundhog'
 import styles from './Loading.module.css'
 
 // Rows at their real pitch with a flat bar where the text will land.
@@ -13,6 +14,7 @@ export function LoadingRows({ count = 6 }: { count?: number }) {
 export function LoadError({ what, onRetry }: { what: string; onRetry: () => void }) {
   return (
     <div className={`tile ${styles.error}`} role="alert">
+      <Groundhog mark mood="worried" className={styles.head} />
       <span>Couldn't load {what}.</span>
       <button type="button" className={styles.retry} onClick={onRetry}>Retry</button>
     </div>

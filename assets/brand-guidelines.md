@@ -59,15 +59,18 @@ Transform and opacity only, and everything stops under
 
 ## The mascot
 
-One figure, drawn from the palette: fur `--gh-fur`, ears and paws
-`--gh-fur-dark`, belly and muzzle `--gh-belly`, eyes and nose `--gh-ink`,
-teeth and eye lights `--gh-teeth`.
+A groundhog peeking out of its burrow in front of the sunrise, built the way
+Duolingo builds Duo: no outlines, flat fur `#E0873A` with one darker side tone,
+a lighter face mask `#F4B877`, big white eyes with `#1B2533` pupils, white
+incisors, no hands.
 
-1. Always on an ink tile, enlarged, cropped by two edges. Never whole, never in
-   a circle.
-2. One groundhog per screen, in a header or an empty state.
-3. Results lead with numbers and tile colour. The groundhog never celebrates
-   and never mourns; a green or red tile does that.
+1. Always on an ink tile, sitting on its bottom edge, the sun `--gh-sun` behind it.
+2. Its mood is the run's state, shown only in the face: lids cut into the eye
+   whites and how far it sinks into the hole. Happy squint when all passed,
+   worried lids when something failed, focused lids and rocking while a run is
+   live, closed eyes and z's when nothing has run, eyes squeezed shut while a
+   password is typed.
+3. One groundhog per screen. The head alone is the mark and the favicon.
 4. Nothing sits on the groundhog, and it never sits on text.
 
 ## Voice

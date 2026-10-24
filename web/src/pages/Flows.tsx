@@ -40,7 +40,7 @@ export function Flows() {
       {run.error && <p className="fail" role="alert">{run.error.message}</p>}
       {flows.isError && <LoadError what="the flows" onRetry={flows.refetch} />}
       {flows.isPending && <LoadingRows />}
-      {flows.data && !flows.data.length && <Empty mascot>No flows yet. Chain saved cases into one.</Empty>}
+      {flows.data && !flows.data.length && <Empty>No flows yet. Chain saved cases into one.</Empty>}
       {flows.data && flows.data.length > 0 && <Table label="Flows" columns={columns} rows={flows.data} rowKey={(f) => f.name} />}
     </>
   )

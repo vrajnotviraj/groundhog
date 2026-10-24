@@ -32,9 +32,18 @@ img { display: block; max-width: 100%; }
 .fail { color: var(--gh-fail); white-space: pre-line; }
 .small { font: var(--gh-small); }
 
-@media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { transition: none !important; animation: none !important; scroll-behavior: auto !important; }
-}
 
 .page > * { min-width: 0; }
 .page { display: grid; gap: var(--gh-gap); max-width: calc(var(--gh-column) + 32px); margin: 0 auto; padding: 24px 16px 64px; }
+
+/* each screen's blocks rise in, one after another; the end state is the resting layout */
+.page > * { animation: enter 420ms cubic-bezier(.2, .8, .2, 1) both; }
+.page > :nth-child(2) { animation-delay: 60ms; }
+.page > :nth-child(3) { animation-delay: 120ms; }
+.page > :nth-child(4) { animation-delay: 180ms; }
+.page > :nth-child(n+5) { animation-delay: 240ms; }
+@keyframes enter { from { opacity: 0; transform: translateY(16px); } }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition: none !important; animation: none !important; scroll-behavior: auto !important; }
+}

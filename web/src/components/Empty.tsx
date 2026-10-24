@@ -1,21 +1,18 @@
 import type { ReactNode } from 'react'
-import { Mascot } from './Mascot'
-import { Tile } from './Tile'
+import { Groundhog, type Mood } from './Groundhog'
 import styles from './Empty.module.css'
 
 interface Props {
   children: ReactNode
-  mascot?: boolean
+  mood?: Mood
 }
 
-// An empty block keeps its frame and says one sentence; the mascot only where the screen allows it.
-export function Empty({ children, mascot = false }: Props) {
+// An empty block keeps its frame: the groundhog's head and one sentence.
+export function Empty({ children, mood = 'sleep' }: Props) {
   return (
-    <div className={mascot ? styles.withMascot : styles.empty}>
-      {mascot && <Mascot />}
-      <Tile className={styles.text}>
-        <p>{children}</p>
-      </Tile>
+    <div className={`tile ${styles.empty}`}>
+      <Groundhog mark mood={mood} className={styles.head} />
+      <p>{children}</p>
     </div>
   )
 }

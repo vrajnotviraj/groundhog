@@ -1,4 +1,4 @@
-.table { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--gh-gap); min-width: 0; }
+.table { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1px; min-width: 0; }
 .header, .row {
   display: grid;
   grid-template-columns: var(--columns);
@@ -6,8 +6,11 @@
   align-items: center;
   padding: 0 16px;
 }
-.header { min-height: 24px; font: var(--gh-small); color: var(--gh-muted); }
-.row { min-height: var(--gh-row); background: var(--gh-surface); border-radius: var(--gh-radius); }
+.header { min-height: 24px; margin-bottom: 7px; font: var(--gh-small); color: var(--gh-muted); }
+.row { min-height: var(--gh-row); background: var(--gh-surface); transition: background-color var(--gh-motion) ease-out; }
+.row:nth-child(2) { border-top-left-radius: var(--gh-radius); border-top-right-radius: var(--gh-radius); }
+.row:last-child { border-bottom-left-radius: var(--gh-radius); border-bottom-right-radius: var(--gh-radius); }
+.row:hover { background: var(--gh-surface-hover); }
 .row > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rest { color: var(--gh-muted); }
 .header .rest { color: inherit; }

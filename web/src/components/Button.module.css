@@ -13,8 +13,8 @@
 .button:active:not(:disabled) { transform: scale(0.98); }
 .button:disabled { cursor: not-allowed; opacity: 0.55; }
 
-.primary { background: var(--gh-ink); color: var(--gh-ink-text); }
-.primary:hover:not(:disabled) { background: var(--gh-ink-hover); }
+.primary { background: var(--gh-sun); color: var(--gh-sun-ink); font-weight: 600; }
+.primary:hover:not(:disabled) { background: var(--gh-sun-hover); transform: translateY(-1px); }
 
 .secondary { background: var(--gh-surface-2); color: var(--gh-ink); }
 .secondary:hover:not(:disabled) { background: var(--gh-surface-2-hover); }

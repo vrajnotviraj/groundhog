@@ -40,7 +40,7 @@ export function Runs() {
       {runs.isError && <LoadError what="the runs" onRetry={runs.refetch} />}
       {runs.isPending && <LoadingRows />}
       {runs.data && !runs.data.length && (
-        filtered ? <Empty>No runs match these filters.</Empty> : <Empty mascot>No runs yet. Run a case to see it here.</Empty>
+        filtered ? <Empty mood="worried">No runs match these filters.</Empty> : <Empty>No runs yet. Run a case to see it here.</Empty>
       )}
       {runs.data && runs.data.length > 0 && <RunTable runs={runs.data} />}
       {runs.data?.length === limit && (

@@ -1,4 +1,5 @@
 .headline { display: flex; gap: var(--gh-gap); align-items: stretch; }
+.mascot { flex: none; width: 152px; min-height: 112px; }
 .waiting { flex: 1; display: flex; align-items: center; }
 .runError { padding: 13px 16px; }
 
@@ -18,5 +19,7 @@
 }
 
 @media (max-width: 639px) {
-  .headline { flex-direction: column; }
+  .headline { flex-wrap: wrap; }
+  .headline > :nth-child(2) { flex: 1; min-width: 0; }
+  .headline > :nth-child(3) { flex-basis: 100%; }
 }

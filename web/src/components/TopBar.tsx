@@ -1,5 +1,9 @@
+import { useQuery } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'react'
-import { NavLink } from 'react-router'
+import { Link, NavLink } from 'react-router'
+import { api } from '../api'
+import { count } from '../format'
+import { Groundhog } from './Groundhog'
 import styles from './TopBar.module.css'
 
 const LINKS = [['/', 'Overview'], ['/cases', 'Cases'], ['/flows', 'Flows'], ['/runs', 'Runs'], ['/settings', 'Settings']]
@@ -15,6 +19,8 @@ export function TopBar({ email, onSignOut }: Props) {
   const nav = useRef<HTMLElement>(null)
   const menu = useRef<HTMLButtonElement>(null)
   const close = () => setOpen(false)
+  const live = useQuery({ queryKey: ['runs', { status: 'running' }], queryFn: () => api.runs({ status: 'running', limit: 20 }), refetchInterval: 5000 })
+  const running = live.data ?? []
 
   useEffect(() => {
     if (!open) return
@@ -28,23 +34,31 @@ export function TopBar({ email, onSignOut }: Props) {
     return () => document.removeEventListener('keydown', onKey)
   }, [open])
   return (
-    <header className={styles.bar}>
-      <NavLink to="/" className={styles.wordmark} onClick={close}>groundhog</NavLink>
-      <button type="button" ref={menu} className={styles.menu} aria-expanded={open} aria-controls="nav" onClick={() => setOpen(!open)}>
-        {open ? 'Close' : 'Menu'}
-      </button>
-      <nav id="nav" ref={nav} className={`${styles.nav} ${open ? styles.open : ''}`}>
-        {LINKS.map(([to, label]) => (
-          <NavLink key={to} to={to} end={to === '/'} onClick={close}
-            className={({ isActive }) => `${styles.link} ${isActive ? styles.active : ''}`}>
-            {label}
-          </NavLink>
-        ))}
-        <span className={styles.user}>
-          <span className={styles.email}>{email}</span>
-          <button type="button" className={styles.signOut} onClick={onSignOut}>Sign out</button>
-        </span>
-      </nav>
+    <header className={styles.top}>
+      <div className={styles.bar}>
+        <NavLink to="/" className={styles.wordmark} onClick={close}><Groundhog mark className={styles.mark} />groundhog</NavLink>
+        {running.length > 0 && (
+          <Link to={running.length === 1 ? `/runs/${running[0].id}` : '/runs'} className={styles.live} onClick={close}>
+            <Groundhog mark mood="dig" className={styles.liveHead} />{count(running.length, 'run')} live
+          </Link>
+        )}
+        <button type="button" ref={menu} className={styles.menu} aria-expanded={open} aria-controls="nav" onClick={() => setOpen(!open)}>
+          {open ? 'Close' : 'Menu'}
+        </button>
+        <nav id="nav" ref={nav} className={`${styles.nav} ${open ? styles.open : ''}`}>
+          {LINKS.map(([to, label]) => (
+            <NavLink key={to} to={to} end={to === '/'} onClick={close}
+              className={({ isActive }) => `${styles.link} ${isActive ? styles.active : ''}`}>
+              {label}
+            </NavLink>
+          ))}
+          <span className={styles.user}>
+            <span className={styles.email}>{email}</span>
+            <button type="button" className={styles.signOut} onClick={onSignOut}>Sign out</button>
+          </span>
+        </nav>
+      </div>
     </header>
   )
 }
+

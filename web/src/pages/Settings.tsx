@@ -5,6 +5,7 @@ import { Board } from '../components/Board'
 import { Button } from '../components/Button'
 import { Confirm } from '../components/Confirm'
 import { Field } from '../components/Field'
+import { Groundhog } from '../components/Groundhog'
 import { LoadError, LoadingRows } from '../components/Loading'
 import { PageTitle } from '../components/PageTitle'
 import { Select } from '../components/Select'
@@ -48,12 +49,13 @@ function Health() {
     <>
       <Board title="Checks" className={styles.checks} aside={
         <span className={styles.aside}>
+          <Groundhog mark mood={failing ? 'worried' : 'happy'} className={styles.head} />
           <span className="muted">{failing ? `${failing} failing` : 'all pass'}</span>
           <Button variant="text" onClick={() => health.refetch()}>Check again</Button>
         </span>}>
         {health.data.checks.map((check) => <CheckTile key={check.name} check={check} />)}
         <Tile className={styles.check}>
-          <span className={styles.mark}>{loginMark(login.data?.ok)}</span>
+          <span className={`${styles.mark} ${login.data ? (login.data.ok ? styles.ok : styles.bad) : ''}`}>{loginMark(login.data?.ok)}</span>
           <span className={styles.name}>App login</span>
           <span className="small muted">{login.data?.detail ?? <>Signs in to the app under test with the <code>.env</code> account. Takes a few seconds.</>}</span>
           <Button disabled={login.isPending} onClick={() => login.mutate()}>{login.isPending ? 'Checking' : 'Run login check'}</Button>
@@ -80,7 +82,7 @@ function loginMark(ok?: boolean) {
 function CheckTile({ check }: { check: Check }) {
   return (
     <Tile className={styles.check}>
-      <span className={styles.mark}>{check.ok ? 'OK' : 'Fix'}</span>
+      <span className={`${styles.mark} ${check.ok ? styles.ok : styles.bad}`}>{check.ok ? 'OK' : 'Fix'}</span>
       {/^[A-Z0-9_]+$/.test(check.name) ? <code>{check.name}</code> : <span className={styles.name}>{check.name}</span>}
       {check.detail !== check.name && <span className="small muted">{check.detail}</span>}
     </Tile>
