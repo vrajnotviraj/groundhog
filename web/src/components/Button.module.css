@@ -1,0 +1,27 @@
+.button {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  height: var(--gh-control);
+  padding: 0 16px;
+  border-radius: var(--gh-radius);
+  font: 500 15px/1 var(--gh-font);
+  white-space: nowrap;
+  text-decoration: none !important;
+  transition: background-color var(--gh-motion) ease-out, transform var(--gh-motion) ease-out;
+}
+.button:active:not(:disabled) { transform: scale(0.98); }
+.button:disabled { cursor: not-allowed; opacity: 0.55; }
+
+.primary { background: var(--gh-ink); color: var(--gh-ink-text); }
+.primary:hover:not(:disabled) { background: var(--gh-ink-hover); }
+
+.secondary { background: var(--gh-surface-2); color: var(--gh-ink); }
+.secondary:hover:not(:disabled) { background: var(--gh-surface-2-hover); }
+
+.text, .quiet, .destructive { padding: 0; height: auto; min-height: 24px; }
+.text { color: var(--gh-ink); }
+.quiet { color: var(--gh-muted); transition: color var(--gh-motion) ease-out; }
+.quiet:hover:not(:disabled) { color: var(--gh-ink); }
+.destructive { color: var(--gh-fail); }
+.text:hover:not(:disabled), .destructive:hover:not(:disabled) { text-decoration: underline !important; text-underline-offset: 3px; }

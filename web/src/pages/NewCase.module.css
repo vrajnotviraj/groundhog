@@ -1,0 +1,11 @@
+.columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; align-items: start; }
+.saved { display: grid; gap: 4px; }
+.saved h2 { padding-bottom: 8px; }
+.intent { display: grid; min-height: 48px; padding: 6px 8px; margin: 0 -8px; border-radius: var(--gh-radius); text-align: left; transition: background-color var(--gh-motion) ease-out; }
+.intent:hover { background: var(--gh-surface-hover); }
+.line { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.name { font-weight: 500; }
+
+@media (max-width: 899px) {
+  .columns { grid-template-columns: 1fr; }
+}

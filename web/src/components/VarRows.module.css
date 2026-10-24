@@ -1,0 +1,3 @@
+.vars { display: grid; gap: var(--gh-gap); justify-items: start; }
+.row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) auto; gap: var(--gh-gap); align-items: center; width: 100%; }
+.row input { min-height: var(--gh-input); padding: 0 12px; border: 0; border-radius: var(--gh-radius); background: var(--gh-surface); min-width: 0; }

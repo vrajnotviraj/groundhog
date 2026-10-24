@@ -1,0 +1,6 @@
+.rows { display: grid; gap: var(--gh-gap); }
+.row { display: flex; align-items: center; min-height: var(--gh-row); padding: 0 16px; }
+.bar { display: block; width: 40%; height: 14px; border-radius: 2px; background: var(--gh-surface-2); }
+.error { display: flex; align-items: center; gap: 16px; min-height: var(--gh-row); padding: 0 16px; }
+.retry { font-weight: 500; }
+.retry:hover { text-decoration: underline; text-underline-offset: 3px; }

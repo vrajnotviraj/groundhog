@@ -1,0 +1,2 @@
+.figure { display: grid; gap: 8px; align-content: space-between; min-height: 104px; }
+.value { font: var(--gh-figure); }

@@ -1,0 +1,9 @@
+.empty { display: grid; grid-column: 1 / -1; }
+.withMascot { display: grid; grid-column: 1 / -1; grid-template-columns: 240px minmax(0, 1fr); gap: var(--gh-gap); }
+.text { display: flex; flex-direction: column; align-items: flex-start; justify-content: space-between; gap: 16px; min-height: var(--gh-row); }
+.empty .text { justify-content: center; }
+
+@media (max-width: 639px) {
+  .withMascot { grid-template-columns: 1fr; }
+  .withMascot > :first-child { min-height: 120px; }
+}

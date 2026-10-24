@@ -1,0 +1,4 @@
+.header { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 16px; padding-bottom: 16px; }
+.text { display: grid; gap: 4px; min-width: 0; }
+.text h1 { overflow-wrap: anywhere; }
+.actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }

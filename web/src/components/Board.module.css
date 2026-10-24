@@ -1,0 +1,3 @@
+.section { display: grid; gap: var(--gh-gap); min-width: 0; }
+.header { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; min-height: 32px; padding-top: 16px; }
+.board { display: grid; gap: var(--gh-gap); min-width: 0; }

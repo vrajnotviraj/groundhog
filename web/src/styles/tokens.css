@@ -1,0 +1,39 @@
+/* Groundhog brand tokens and app roles: a brand change touches this file only. */
+:root {
+  /* colour */
+  --gh-ground: #E5E1D8;
+  --gh-surface: #DAD5CA;
+  --gh-surface-2: #B8AD9E;
+  --gh-muted: #61524A;
+  --gh-ink: #2A1D17;
+  --gh-ink-text: #E5E1D8;
+  --gh-accent: #3D6433;
+  --gh-accent-ink: #FFFFFF;
+  --gh-fail: #A8231B;
+  --gh-fail-ink: #FFFFFF;
+
+  /* one tone darker, for hover */
+  --gh-surface-hover: #CFC9BC;
+  --gh-surface-2-hover: #A99D8D;
+  --gh-ink-hover: #3A2A22;
+
+  /* type */
+  --gh-font: "Albert Sans", system-ui, sans-serif;
+  --gh-code: "JetBrains Mono", ui-monospace, monospace;
+  --gh-title: 600 24px/1.25 var(--gh-font);
+  --gh-section: 500 16px/1.45 var(--gh-font);
+  --gh-figure: 400 28px/1.15 var(--gh-font);
+  --gh-body: 400 15px/1.45 var(--gh-font);
+  --gh-small: 400 13px/1.45 var(--gh-font);
+  --gh-mono: 400 13px/1.45 var(--gh-code);
+
+  /* shape and motion */
+  --gh-radius: 4px;
+  --gh-gap: 8px;
+  --gh-pad: 16px;
+  --gh-row: 48px;
+  --gh-control: 36px;
+  --gh-input: 40px;
+  --gh-column: 1200px;
+  --gh-motion: 150ms;
+}

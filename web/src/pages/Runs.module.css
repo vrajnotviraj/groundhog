@@ -1,0 +1,7 @@
+.filters { display: grid; grid-template-columns: 180px 180px minmax(0, 320px); gap: var(--gh-gap) 16px; padding-bottom: 16px; }
+.more { justify-self: start; margin-top: 8px; }
+
+@media (max-width: 639px) {
+  .filters { grid-template-columns: 1fr 1fr; }
+  .filters > :last-child { grid-column: 1 / -1; }
+}
