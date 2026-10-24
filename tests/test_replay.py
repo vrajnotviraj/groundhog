@@ -187,3 +187,21 @@ def test_run_case_emits_a_shot_after_each_step_it_ran_but_not_a_skipped_one(monk
     replay.run_case(case, SimpleNamespace(page=page, ws="FY1"), heal=False)
     kinds = [e["kind"] for e in db.runs().find_one({"_id": run_id})["events"]]
     assert kinds == ["step", "shot", "step"]
+
+
+def test_run_case_counts_the_run_without_overwriting_an_edit_made_mid_run(monkeypatch):
+    from groundhog import db
+    from groundhog.cases import store
+
+    case = Case(name="c", intent="i", steps=[Step(id="s1", action="click", selector="#a")])
+    store.save(case)
+
+    def edit_while_running(page, step, ctx):
+        db.cases().update_one({"_id": "c"}, {"$set": {"intent": "edited"}})
+        return StepOutcome(ok=True, mode="static", selector="#a")
+
+    monkeypatch.setattr(replay, "goto_app", lambda page, url: None)
+    monkeypatch.setattr(replay, "run_step", edit_while_running)
+    replay.run_case(case, SimpleNamespace(page=SimpleNamespace(), ws="FY1"), heal=False)
+    saved = store.load("c")
+    assert (saved.intent, saved.meta.runs) == ("edited", 1)

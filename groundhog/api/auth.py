@@ -1,7 +1,6 @@
-"""Console sign-in: users in Mongo, a session cookie per login, and the guards every route uses.
+"""Console sign-in: login, logout, the session cookie and the guards every route uses.
 
-The cookie holds a random token; Mongo keeps only its sha256, so a database read never yields a
-usable session.
+The cookie holds a random token; Mongo stores only its sha256.
 """
 
 import hashlib
@@ -16,12 +15,12 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, StringConstraints
 
 from groundhog import db
-from groundhog.passwords import hash_password, verify_password
+from groundhog.api.passwords import hash_password, verify_password
 
 COOKIE = "gh_session"
 SESSION_DAYS = 7
 MAX_FAILURES = 5
-# Checked when the email is unknown, so a wrong email costs as long as a wrong password.
+# Verified against when the email is unknown, so both failures take the same time.
 DECOY_HASH = hash_password(secrets.token_hex(8))
 
 _failures: dict[str, list[float]] = {}
@@ -35,11 +34,12 @@ class Login(BaseModel):
 
 
 def token_id(token: str) -> str:
+    """The stored id of a session token: its sha256."""
     return hashlib.sha256(token.encode()).hexdigest()
 
 
 def current_user(request: Request) -> dict:
-    """The signed-in user, or 401."""
+    """Return the signed-in user, or raise 401."""
     token = request.cookies.get(COOKIE)
     now = datetime.now(timezone.utc)
     session = token and db.sessions().find_one({"_id": token_id(token), "expires_at": {"$gt": now}})
@@ -56,7 +56,7 @@ def admin_only(user: dict = Depends(current_user)) -> dict:
 
 
 async def reject_foreign_origin(request: Request, call_next):
-    """Refuse a state-changing request sent from another site's page."""
+    """Refuse a state-changing request whose Origin is another site."""
     origin = request.headers.get("origin")
     foreign = origin and urlsplit(origin).netloc != request.headers.get("host")
     if request.method not in ("GET", "HEAD", "OPTIONS") and foreign:

@@ -1,7 +1,0 @@
-.surface { background: var(--gh-surface); }
-.surface-2 { background: var(--gh-surface-2); }
-.muted { background: var(--gh-muted); color: var(--gh-ink-text); }
-.ground { background: var(--gh-ground); color: var(--gh-muted); }
-.pass { background: var(--gh-accent); color: var(--gh-accent-ink); }
-.fail { background: var(--gh-fail); color: var(--gh-fail-ink); }
-.sun { background: var(--gh-sun); color: var(--gh-sun-ink); }

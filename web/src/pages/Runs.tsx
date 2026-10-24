@@ -1,13 +1,13 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import { api } from '../api'
-import { Button } from '../components/Button'
-import { Empty } from '../components/Empty'
-import { Field } from '../components/Field'
-import { LoadError, LoadingRows } from '../components/Loading'
-import { PageTitle } from '../components/PageTitle'
-import { RunTable } from '../components/RunTable'
-import { Select } from '../components/Select'
+import { Button } from '../forms/Button'
+import { Empty } from '../mascot/Empty'
+import { Field } from '../forms/Field'
+import { LoadError, LoadingRows } from '../mascot/Loading'
+import { PageTitle } from '../layout/PageTitle'
+import { RunTable } from '../run/RunTable'
+import { Select } from '../forms/Select'
 import { count } from '../format'
 import styles from './Runs.module.css'
 
@@ -23,7 +23,7 @@ export function Runs() {
   const filters = { limit, kind, status, target: target.trim() }
   const runs = useQuery({
     queryKey: ['runs', filters], queryFn: () => api.runs(filters), placeholderData: keepPreviousData,
-    refetchInterval: 3000, // runs started from a terminal appear without a reload
+    refetchInterval: 3000, // picks up runs started from the CLI
   })
   const filtered = Boolean(kind || status || target.trim())
 

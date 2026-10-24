@@ -1,4 +1,4 @@
-// The fetch wrapper and one typed function per API endpoint (spec §4).
+// Typed calls to the console API.
 import type {
   Case, CaseDetail, CaseSummary, Flow, FlowDetail, FlowSummary, Run, RunSummary, SettingsHealth, User, Vars,
 } from './types'
@@ -47,7 +47,7 @@ export const api = {
   login: (email: string, password: string) => request<void>('POST', '/auth/login', { email, password }),
   logout: () => request<void>('POST', '/auth/logout'),
   me: () => get<{ email: string; role: User['role'] }>('/auth/me'),
-  health: () => get<{ ok: boolean; mongo: boolean; version: string }>('/health'),
+  health: () => get<{ mongo: boolean; version: string }>('/health'),
 
   cases: () => get<CaseSummary[]>('/cases'),
   case: (name: string) => get<CaseDetail>(`/cases/${encode(name)}`),
@@ -64,7 +64,7 @@ export const api = {
   deleteFlow: (name: string) => request<void>('DELETE', `/flows/${encode(name)}`),
   runFlow: (name: string, options: RunOptions = {}) =>
     request<{ run_id: string }>('POST', `/flows/${encode(name)}/run`, options),
-  composeFlow: (body: { intent: string; name?: string; headed?: boolean }) =>
+  composeFlow: (body: { intent: string }) =>
     request<{ run_id: string }>('POST', '/flows/compose', body),
 
   runs: (filters: RunFilters = {}) => {
@@ -83,3 +83,9 @@ export const api = {
   addUser: (body: { email: string; password: string; role: User['role'] }) => request<User>('POST', '/users', body),
   removeUser: (id: string) => request<void>('DELETE', `/users/${encode(id)}`),
 }
+
+export const meQuery = { queryKey: ['me'], queryFn: api.me }
+export const casesQuery = { queryKey: ['cases'], queryFn: api.cases }
+export const settingsHealthQuery = { queryKey: ['settings-health'], queryFn: api.settingsHealth, staleTime: 60_000 }
+
+export const isAdmin = (me?: { role: User['role'] }) => me?.role === 'admin'

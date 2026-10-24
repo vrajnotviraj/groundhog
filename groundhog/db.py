@@ -1,7 +1,4 @@
-"""The Mongo database groundhog keeps everything in: cases, flows, runs, screenshots, users, sessions.
-
-The client connects on first use, so importing this module never touches the network.
-"""
+"""The Mongo collections: cases, flows, runs, screenshots, users and sessions. Connects on first use."""
 
 from pymongo import ASCENDING, DESCENDING, MongoClient
 
@@ -42,6 +39,7 @@ def sessions():
 
 
 def ping() -> bool:
+    """True when Mongo answers."""
     try:
         database().command("ping")
         return True

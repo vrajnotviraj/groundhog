@@ -1,9 +1,12 @@
-"""Case JSON schema — the contract between the authoring agent and static replay."""
+"""The case and flow schema shared by authoring, replay, the store and the API."""
 
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, StringConstraints, model_validator
 
+# Case and flow names: lowercase kebab-case, at most 64 characters.
+NAME = r"^[a-z0-9][a-z0-9-]{0,63}$"
+Name = Annotated[str, StringConstraints(pattern=NAME)]
 Action = Literal["goto", "click", "fill", "press", "hover"]
 
 
@@ -53,7 +56,7 @@ class Meta(BaseModel):
 
 
 class Case(BaseModel):
-    name: str
+    name: Name
     intent: str
     start_path: str = "/"
     steps: list[Step]
@@ -65,7 +68,7 @@ class FlowCase(BaseModel):
     """One saved case inside a flow. In flow JSON a bare string is enough;
     the object form adds per-case var overrides."""
 
-    case: str
+    case: Name
     # Rendered against the flow's shared vars, so a case can derive its value
     # from a shared one (e.g. query: "{{name}}").
     vars: dict[str, str] = Field(default_factory=dict)
@@ -83,7 +86,7 @@ class Flow(BaseModel):
     template a previous case created. cleanup cases run even when the chain
     fails, so a create is always paired with its delete."""
 
-    name: str
+    name: Name
     intent: str = ""
     # Values may use {{stamp}} (a per-run UTC timestamp) so each run creates
     # uniquely-named data instead of colliding with leftovers.

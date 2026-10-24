@@ -1,13 +1,13 @@
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import { useState, type FormEvent } from 'react'
-import { useNavigate } from 'react-router'
-import { api } from '../api'
-import { Button } from '../components/Button'
-import { Field } from '../components/Field'
-import { PageTitle } from '../components/PageTitle'
-import { Tile } from '../components/Tile'
-import { toVars, VarRows } from '../components/VarRows'
+import { api, casesQuery } from '../api'
+import { Button } from '../forms/Button'
+import { Field } from '../forms/Field'
+import { PageTitle } from '../layout/PageTitle'
+import { Tile } from '../layout/Tile'
+import { toVars, VarRows } from '../forms/VarRows'
 import { deriveName, NAME_PATTERN, newest } from '../format'
+import { useStartRun } from '../run/live'
 import styles from '../styles/form.module.css'
 import layout from './NewCase.module.css'
 
@@ -17,11 +17,7 @@ export function NewCase() {
   const [vars, setVars] = useState<[string, string][]>([])
   const [start, setStart] = useState('/:ws/home')
   const [headed, setHeaded] = useState(false)
-  const navigate = useNavigate()
-  const author = useMutation({
-    mutationFn: () => api.authorCase({ intent, name: name || undefined, vars: toVars(vars), start, headed }),
-    onSuccess: ({ run_id }) => navigate(`/runs/${run_id}`),
-  })
+  const author = useStartRun(() => api.authorCase({ intent, name: name || undefined, vars: toVars(vars), start, headed }))
   const submit = (e: FormEvent) => {
     e.preventDefault()
     author.mutate()
@@ -56,9 +52,9 @@ export function NewCase() {
   )
 }
 
-// The saved cases' intents, newest first; picking one copies it into the form as a starting point.
+// The newest saved intents; picking one copies it into the form.
 function SavedIntents({ onPick }: { onPick: (intent: string) => void }) {
-  const cases = useQuery({ queryKey: ['cases'], queryFn: api.cases })
+  const cases = useQuery(casesQuery)
   const latest = newest(cases.data ?? [], 10)
   return (
     <Tile className={layout.saved}>

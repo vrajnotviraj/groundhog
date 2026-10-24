@@ -65,7 +65,7 @@ def _stub_cases(names):
 def _fake_run_case(outcomes: dict[str, bool], calls: list):
     def fake(case, session, vars=None, heal=True):
         calls.append((case.name, dict(vars or {})))
-        return RunResult(case=case.name, passed=outcomes[case.name])
+        return RunResult(passed=outcomes[case.name])
 
     return fake
 
@@ -158,7 +158,7 @@ def _composer(monkeypatch, draft, run_outcomes=None, authored=None):
     calls = []
     monkeypatch.setattr(composer, "run_case", lambda case, session, vars=None, heal=True: (
         calls.append(("replay", case.name, dict(vars or {}))),
-        RunResult(case=case.name, passed=(run_outcomes or {}).get(case.name, True)))[1])
+        RunResult(passed=(run_outcomes or {}).get(case.name, True)))[1])
 
     def fake_author(intent, name=None, vars=None, session=None):
         assert session is not None  # authoring must reuse the flow's session

@@ -1,10 +1,10 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router'
-import { api, ApiError } from '../api'
-import { Button } from '../components/Button'
-import { Field } from '../components/Field'
-import { Mascot } from '../components/Mascot'
+import { api, ApiError, meQuery } from '../api'
+import { Button } from '../forms/Button'
+import { Field } from '../forms/Field'
+import { Mascot } from '../mascot/Mascot'
 import styles from './Login.module.css'
 
 export function Login() {
@@ -16,7 +16,7 @@ export function Login() {
   const login = useMutation({
     mutationFn: () => api.login(email, password),
     onSuccess: () => {
-      queryClient.removeQueries({ queryKey: ['me'] })
+      queryClient.removeQueries({ queryKey: meQuery.queryKey })
       navigate('/')
     },
   })

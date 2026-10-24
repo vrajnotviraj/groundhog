@@ -5,6 +5,9 @@
 
 .columns { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: var(--gh-gap); align-items: start; padding-top: 16px; }
 .shot { position: sticky; top: 16px; }
+.screenshot { padding: 8px; }
+.screenshot p { padding: 8px; }
+.screenshot img { width: 100%; height: auto; border-radius: 2px; }
 
 .cost { grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }
 .static { margin-top: 16px; }

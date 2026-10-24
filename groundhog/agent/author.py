@@ -15,7 +15,7 @@ from groundhog.browser.actions import Ctx, goto_app, on_picker, perform, recover
 from groundhog.browser.session import Session
 from groundhog.browser.snapshot import observe, selectors_for
 from groundhog.cases.schema import Assertion, Case, Expect, Step
-from groundhog.cases.store import render, save
+from groundhog.cases.store import derive_name, render, save
 from groundhog.config import ws_path
 
 ACTIONS = {"CLICK": "click", "HOVER": "hover", "TYPE": "fill", "PRESS_ENTER": "press"}
@@ -27,17 +27,13 @@ DATEY = re.compile(r"^[\d\W]|^(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[
 
 
 def embeds_value(selector: str, value: str | None) -> bool:
-    """Overfitting guard: a selector must never embed the step's data value,
-    or the case breaks the moment the test data changes. A {{var}} placeholder
-    is not data — it renders per run — so it passes."""
+    """True when the selector contains the step's literal data value (a {{var}} does not count)."""
     return (bool(value) and "{{" not in value
             and len(value) >= 3 and value.lower() in selector.lower())
 
 
 def _templatize(obj, vars: dict[str, str] | None):
-    """Reverse-substitute concrete var values back into {{var}} placeholders, so
-    the saved case is parameterized even though the agent typed real values
-    (validated name fields reject literal braces)."""
+    """Replace concrete var values with {{var}} placeholders, in strings, lists and dicts."""
     if not vars:
         return obj
     if isinstance(obj, str):
@@ -50,11 +46,6 @@ def _templatize(obj, vars: dict[str, str] | None):
     if isinstance(obj, dict):
         return {k: _templatize(x, vars) for k, x in obj.items()}
     return obj
-
-
-def _derive_name(intent: str) -> str:
-    words = re.findall(r"[a-z0-9]+", intent.lower())
-    return "-".join(words[:5]) or "case"
 
 
 def _clauses(intent: str) -> list[str]:
@@ -345,9 +336,8 @@ def _drive(session: Session, intent: str, name: str, vars: dict[str, str] | None
 def author_case(intent: str, name: str | None = None, headless: bool = True,
                 vars: dict[str, str] | None = None, session: Session | None = None,
                 start: str = "/:ws/home") -> Case:
-    """Author one case against the live app. Pass `session` to reuse a logged-in
-    session (flow composing); otherwise one is opened for this case."""
-    name = name or _derive_name(intent)
+    """Author one case against the live app, in the given session or a new one."""
+    name = name or derive_name(intent)
     if session is not None:
         return _drive(session, intent, name, vars, start)
     with Session(headless=headless) as owned:
@@ -356,15 +346,12 @@ def author_case(intent: str, name: str | None = None, headless: bool = True,
 
 
 def _verify_vars(vars: dict[str, str] | None, stamp: int) -> dict[str, str]:
-    """Fresh-suffix each supplied var value so a verification replay exercises the
-    same steps against new data — replaying a create-style case with the values
-    authoring just used would collide with them (duplicate-name rejection)."""
+    """Append a fresh suffix to each var so the verification replay creates new data."""
     return {k: f"{v}-v{stamp}" for k, v in (vars or {}).items()}
 
 
 def verify_case(case: Case, vars: dict[str, str] | None = None, headless: bool = True):
-    """Prove a freshly authored case actually replays: one static run (no heal)
-    against fresh data. Returns the RunResult; never touches the saved case."""
+    """Replay the case once without healing against fresh vars and return the RunResult."""
     from groundhog.runner.replay import run_case
 
     fresh = _verify_vars(vars, int(datetime.now(timezone.utc).timestamp()))
@@ -374,7 +361,6 @@ def verify_case(case: Case, vars: dict[str, str] | None = None, headless: bool =
         session.ensure_logged_in()
         result = run_case(case, session, vars=fresh, heal=False)
     if fresh:
-        events.emit("note", level="warn", text="verification created extra data "
-                    f"({', '.join(fresh.values())}) — this repo pairs creates with deletes "
-                    "at the flow level, not per case, so you may want to clean it up.")
+        events.emit("note", level="warn", text=f"verification created {', '.join(fresh.values())}; "
+                                                "delete them if you do not need them.")
     return result

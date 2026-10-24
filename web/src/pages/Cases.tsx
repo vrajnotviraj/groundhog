@@ -1,23 +1,23 @@
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router'
-import { api } from '../api'
-import { Button } from '../components/Button'
-import { Empty } from '../components/Empty'
-import { Field } from '../components/Field'
-import { LastRun } from '../components/LastRun'
-import { LoadError, LoadingRows } from '../components/Loading'
-import { PageTitle } from '../components/PageTitle'
-import { Table, type Column } from '../components/Table'
+import { Link } from 'react-router'
+import { api, casesQuery } from '../api'
+import { Button } from '../forms/Button'
+import { Empty } from '../mascot/Empty'
+import { Field } from '../forms/Field'
+import { LastRun } from '../run/LastRun'
+import { LoadError, LoadingRows } from '../mascot/Loading'
+import { PageTitle } from '../layout/PageTitle'
+import { Table, type Column } from '../table/Table'
 import { count } from '../format'
+import { useStartRun } from '../run/live'
 import type { CaseSummary } from '../types'
 import styles from './Cases.module.css'
 
 export function Cases() {
-  const cases = useQuery({ queryKey: ['cases'], queryFn: api.cases })
+  const cases = useQuery(casesQuery)
   const [search, setSearch] = useState('')
-  const navigate = useNavigate()
-  const run = useMutation({ mutationFn: (name: string) => api.runCase(name), onSuccess: ({ run_id }) => navigate(`/runs/${run_id}`) })
+  const run = useStartRun((name: string) => api.runCase(name))
   const term = search.trim().toLowerCase()
   const shown = (cases.data ?? []).filter((c) => `${c.name} ${c.intent}`.toLowerCase().includes(term))
 

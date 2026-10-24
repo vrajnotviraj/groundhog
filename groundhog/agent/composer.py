@@ -1,15 +1,7 @@
-"""Composer: turn an English chain description into a flow.
+"""Turn an English description into a flow: reuse saved cases, author missing ones in one live pass, save the flow.
 
-Composing decomposes the description into case-sized steps, reusing saved
-cases verbatim and authoring the missing ones. The first pass runs live in ONE
-session, in chain order: an existing case is replayed, a missing one is
-authored — and since authoring performs the actions for real, the app state
-advances exactly as a replay would, so each new case is built on top of what
-the chain already created. The flow is saved after the pass; every later
-`flow run` is a static replay.
+The pass runs in one session in chain order, so each new case is authored on top of what the chain created.
 """
-
-import re
 
 from pydantic import BaseModel, Field
 
@@ -17,7 +9,7 @@ from groundhog import events
 from groundhog.browser.session import Session
 from groundhog.cases import store
 from groundhog.cases.schema import Flow
-from groundhog.cases.store import NAME, VAR
+from groundhog.cases.store import VAR, derive_name
 from groundhog.llm import client
 from groundhog.runner.flow import shared_vars
 from groundhog.runner.replay import run_case
@@ -62,8 +54,7 @@ Saved cases:
 
 
 class DraftCase(BaseModel):
-    """One step: either reuse a saved case (`reuse` alone) or author a new one
-    (`name` + `intent`). Field descriptions guide the model — comments don't."""
+    """One step: reuse a saved case, or author a new one from name + intent."""
 
     reuse: str = Field("", description="saved case name from the catalog, verbatim; "
                                        "empty when this step needs a new case")
@@ -81,8 +72,7 @@ class DraftVar(BaseModel):
 
 class FlowDraft(BaseModel):
     name: str = Field(description="short kebab-case name for the flow")
-    # a list of pairs, not a dict: strict structured-output schemas drop
-    # free-form object keys, which came back as {} no matter the prompt
+    # A list of pairs: strict structured output returns {} for dict fields.
     vars: list[DraftVar] = Field(default_factory=list,
                                  description="shared var defaults — one entry per {{var}} "
                                              "used by any step's intent")
@@ -110,11 +100,10 @@ def _decompose(intent: str) -> FlowDraft:
         if dc.reuse and dc.reuse not in known:
             if not dc.intent:
                 raise ValueError(f"composer referenced a saved case that does not exist: {dc.reuse}")
-            # the model named a new case under reuse but gave an intent too —
-            # recover by treating it as a case to author
+            # A new case named under reuse, with an intent: author it.
             dc.name, dc.reuse = dc.name or dc.reuse, ""
         if not dc.reuse and dc.intent in by_intent:
-            # a "new" case with a catalog intent verbatim is a reuse in disguise
+            # A new case whose intent matches a saved case word for word: reuse it.
             dc.reuse, dc.name, dc.intent = by_intent[dc.intent], "", ""
         if not dc.reuse and not dc.intent:
             raise ValueError("composer produced a step with neither a saved case nor an intent")
@@ -127,7 +116,7 @@ def _decompose(intent: str) -> FlowDraft:
     return draft
 
 
-def _run_one(session: Session, dc: DraftCase, case_name: str, vars: dict[str, str], stage: str) -> None:
+def _replay_or_author(session: Session, dc: DraftCase, case_name: str, vars: dict[str, str], stage: str) -> None:
     """Replay an existing case or author a missing one; raises on failure."""
     from groundhog.agent.author import author_case
 
@@ -147,15 +136,11 @@ def _run_one(session: Session, dc: DraftCase, case_name: str, vars: dict[str, st
 
 
 def compose_flow(intent: str, name: str | None = None, headless: bool = True) -> Flow:
-    from groundhog.agent.author import _derive_name
-
+    """Compose, run once live, and save a flow for the intent."""
     draft = _decompose(intent)
     flow = Flow(name=name or draft.name, intent=intent, vars=draft.var_map(),
-                chain=[dc.reuse or dc.name or _derive_name(dc.intent) for dc in draft.chain],
-                cleanup=[dc.reuse or dc.name or _derive_name(dc.intent) for dc in draft.cleanup])
-    bad = [n for n in [flow.name, *(fc.case for fc in flow.chain + flow.cleanup)] if not re.match(NAME, n)]
-    if bad:
-        raise ValueError(f"composer produced names that are not lowercase kebab-case: {bad}")
+                chain=[dc.reuse or dc.name or derive_name(dc.intent) for dc in draft.chain],
+                cleanup=[dc.reuse or dc.name or derive_name(dc.intent) for dc in draft.cleanup])
     chain = list(zip(draft.chain, [fc.case for fc in flow.chain]))
     cleanup = list(zip(draft.cleanup, [fc.case for fc in flow.cleanup]))
     vars = shared_vars(flow)  # concrete values for the pass; cases stay parameterized
@@ -164,20 +149,18 @@ def compose_flow(intent: str, name: str | None = None, headless: bool = True) ->
         session.ensure_logged_in()
         try:
             for dc, case_name in chain:
-                _run_one(session, dc, case_name, vars, "chain")
+                _replay_or_author(session, dc, case_name, vars, "chain")
         except Exception as e:
-            # the pass still owes the app a cleanup: replay the cleanup cases
-            # that already exist so data isn't stranded, then report. Cases
-            # authored before the failure stay saved — only the flow isn't.
+            # Chain failed: run the saved cleanup cases, then raise. Authored cases stay saved.
             for dc, case_name in cleanup:
                 if dc.reuse:
                     try:
-                        _run_one(session, dc, case_name, vars, "cleanup")
+                        _replay_or_author(session, dc, case_name, vars, "cleanup")
                     except Exception:
-                        pass  # _run_one already reported it; the remaining cleanup still runs
+                        pass  # _replay_or_author already emitted the failure
             raise RuntimeError(f"{e} — flow not saved (already-authored cases were kept)")
         for dc, case_name in cleanup:
-            _run_one(session, dc, case_name, vars, "cleanup")
+            _replay_or_author(session, dc, case_name, vars, "cleanup")
 
     store.save_flow(flow)
     return flow

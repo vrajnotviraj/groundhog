@@ -1,4 +1,4 @@
-"""groundhog — AI-authored, deterministically-replayed web tests."""
+"""Command line: author and replay cases, run flows, check setup, serve the console."""
 
 import json
 import re
@@ -13,18 +13,9 @@ from rich.console import Console
 from rich.markup import escape
 from rich.table import Table
 
-from groundhog import config, db, events
+from groundhog import config, db, events, setup_checks
 from groundhog.cases import store
-from groundhog.checks import (
-    REQUIRED,
-    check_app,
-    check_chromium,
-    check_env,
-    check_jev,
-    check_login,
-    check_mongo,
-    placeholders,
-)
+from groundhog.cases.schema import NAME
 
 app = typer.Typer(no_args_is_help=True, add_completion=False)
 flow_app = typer.Typer(no_args_is_help=True, add_completion=False)
@@ -35,7 +26,7 @@ console = Console()
 RUN_ID = typer.Option(None, help="id of the run document to write events to; created when omitted")
 
 
-def _parse_vars(pairs: list[str]) -> dict[str, str]:
+def parse_vars(pairs: list[str]) -> dict[str, str]:
     return dict(p.split("=", 1) for p in pairs)
 
 
@@ -45,8 +36,8 @@ def inventory() -> str:
 
 @contextmanager
 def recorded(run_id: str | None, kind: str, target: str, vars: dict, intent: str | None = None):
-    """Open a run document for the command, close it as error if the command raises, end on its id."""
-    if not re.match(store.NAME, target):
+    """Open a run document, close it as error if the command raises, and print the run id at the end."""
+    if not re.match(NAME, target):
         console.print(f"[red]{escape(target)} is not a valid name: use lowercase letters, digits and dashes[/]")
         raise typer.Exit(2)
     run_id = events.start(run_id, kind, target, vars, intent)
@@ -90,15 +81,12 @@ def init():
         raise typer.Exit(1)
 
     def line(ok: bool, detail: str) -> None:
-        # A failure detail carries an exception message, which may contain [brackets]
-        # that rich would read as markup and choke on.
+        # Escaped because an error detail can contain [brackets], which rich reads as markup.
         console.print(f"  [{'green' if ok else 'red'}]{'✓' if ok else '✗'}[/] {escape(detail)}", highlight=False)
 
-    ph = placeholders()
-    env_ok = True
-    for name in REQUIRED:
-        ok, detail = check_env(name, getattr(config, name, ""), ph.get(name))
-        env_ok = env_ok and ok
+    results = {}
+    for name, ok, detail in setup_checks.all_checks():
+        results[name] = ok
         line(ok, detail)
     if config.ANTHROPIC_API_KEY:
         line(True, "ANTHROPIC_API_KEY")
@@ -106,18 +94,10 @@ def init():
         console.print("  [dim]·[/] ANTHROPIC_API_KEY — optional: unlocks `flow new` and lets the agent "
                       "write field values the intent doesn't spell out")
 
-    chromium_ok, detail = check_chromium()
-    line(chromium_ok, detail)
-    app_ok, detail = check_app()
-    line(app_ok, detail)
-    jev_ok, detail = check_jev()
-    line(jev_ok, detail)
-    mongo_ok, detail = check_mongo()
-    line(mongo_ok, detail)
-
-    login_ok = env_ok and chromium_ok and app_ok
+    env_ok = all(results[name] for name in setup_checks.REQUIRED)
+    login_ok = env_ok and results["Chromium"] and results["App"]
     if login_ok:
-        login_ok, detail = check_login()
+        login_ok, detail = setup_checks.check_login()
         line(login_ok, detail)
     else:
         console.print("  [dim]·[/] login — skipped until the checks above pass")
@@ -129,23 +109,22 @@ def init():
                   'in the templates list" --name my-first-case --var name=gh-1\n'
                   "  uv run groundhog run my-first-case --var name=gh-2\n"
                   "  uv run groundhog flow run template-lifecycle", markup=False)
-    raise typer.Exit(0 if env_ok and chromium_ok and app_ok and jev_ok and mongo_ok and login_ok else 1)
+    raise typer.Exit(0 if all(results.values()) and login_ok else 1)
 
 
 @app.command()
 def run(name: str, var: list[str] = typer.Option([], help="template var, e.g. --var name=gh-test"),
         no_heal: bool = typer.Option(False, help="fail instead of trying to heal a drifted step"),
         headed: bool = typer.Option(False, help="show the browser"), run_id: str = RUN_ID):
-    """Replay a saved case — static, zero AI until something drifts."""
+    """Replay a saved case. No AI calls unless a step has drifted."""
     from groundhog.browser.session import Session
     from groundhog.runner.replay import run_case
 
-    vars = _parse_vars(var)
+    vars = parse_vars(var)
     with recorded(run_id, "run", name, vars):
         case = saved(store.load, name)
         if missing := store.missing_vars(case, vars):
-            # A bare run types literal {{braces}} into the app; a fresh per-run value is
-            # what a create-style case wants. Delete-style cases need a real --var.
+            # Fill missing vars with a per-run value so no literal {{braces}} get typed.
             stamp = datetime.now(timezone.utc).strftime("%H%M%S")
             vars |= {m: f"gh-{stamp}" for m in missing}
             events.record(vars=vars)
@@ -167,11 +146,11 @@ def new(intent: str, name: str = typer.Option(None, help="case name (kebab-case)
         start: str = typer.Option("/:ws/home", help="path to open before the agent starts"),
         verify: bool = typer.Option(False, help="after saving, replay the case once to prove it works"),
         headed: bool = typer.Option(False, help="show the browser"), run_id: str = RUN_ID):
-    """Author a new case from a natural-language intent (agentic, one-time cost)."""
-    from groundhog.agent.author import _derive_name, author_case, verify_case
+    """Author a new case from a plain-English intent."""
+    from groundhog.agent.author import author_case, verify_case
 
-    parsed = _parse_vars(var)
-    name = name or _derive_name(intent)
+    parsed = parse_vars(var)
+    name = name or store.derive_name(intent)
     clock = time.monotonic()
     with recorded(run_id, "author", name, parsed, intent):
         case = author_case(intent, name=name, headless=not headed, vars=parsed, start=start)
@@ -211,11 +190,11 @@ def show(name: str):
 def flow_run(name: str, var: list[str] = typer.Option([], help="shared template var, e.g. --var name=gh-test"),
              no_heal: bool = typer.Option(False, help="fail instead of trying to heal a drifted step"),
              headed: bool = typer.Option(False, help="show the browser"), run_id: str = RUN_ID):
-    """Replay a flow: chain cases in one session, then cleanup — always."""
+    """Replay a flow: run its cases in one session, then always run its cleanup."""
     from groundhog.browser.session import Session
     from groundhog.runner.flow import run_flow
 
-    vars = _parse_vars(var)
+    vars = parse_vars(var)
     with recorded(run_id, "flow", name, vars):
         flow = saved(store.load_flow, name)
         with Session(headless=not headed) as session:
@@ -232,13 +211,11 @@ def flow_run(name: str, var: list[str] = typer.Option([], help="shared template 
 @flow_app.command("new")
 def flow_new(intent: str, name: str = typer.Option(None, help="flow name (kebab-case); derived from intent if omitted"),
              headed: bool = typer.Option(False, help="show the browser"), run_id: str = RUN_ID):
-    """Compose a flow from English: reuse saved cases, author the missing ones
-    live in one pass, then save the flow — later runs are static."""
-    from groundhog.agent.author import _derive_name
+    """Compose a flow from English: reuse saved cases, author missing ones, then save the flow."""
     from groundhog.agent.composer import compose_flow
 
     clock = time.monotonic()
-    with recorded(run_id, "compose", name or _derive_name(intent), {}, intent):
+    with recorded(run_id, "compose", name or store.derive_name(intent), {}, intent):
         flow = compose_flow(intent, name=name, headless=not headed)
         events.record(target=flow.name)
         events.finish("passed", total_ms=int((time.monotonic() - clock) * 1000), healed=0, modes=[])
@@ -260,7 +237,7 @@ def flow_list():
 @db_app.command("seed")
 def db_seed():
     """Create the indexes and the first admin."""
-    from groundhog.passwords import hash_password
+    from groundhog.api.passwords import hash_password
 
     db.ensure_indexes()
     console.print(inventory(), highlight=False)

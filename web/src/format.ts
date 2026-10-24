@@ -1,4 +1,4 @@
-// How durations, dates, counts and names read on screen.
+// Formatting for durations, dates, counts and names.
 
 export function duration(ms?: number): string {
   if (ms == null) return '-'
@@ -36,12 +36,17 @@ export function intentVars(intent: string): string[] {
 
 export const NAME_PATTERN = '[a-z0-9][a-z0-9\\-]{0,63}'
 
-// The name the author agent derives from an intent when none is given.
+// The name the author agent gives a case when none is set; must match the backend.
 export function deriveName(intent: string): string {
   return (intent.toLowerCase().match(/[a-z0-9]+/g) ?? []).slice(0, 5).join('-') || 'case'
 }
 
-// An authoring or compose run started without a name has no target yet.
+// A run's title; authoring and compose runs without a name have no target yet.
 export function runTitle(run: { target: string; kind: string }): string {
   return run.target || (run.kind === 'compose' ? 'New flow' : 'New case')
+}
+
+// Who checks an assertion: Jev or a deterministic check.
+export function checkedBy(mode: 'deterministic' | 'jev'): string {
+  return mode === 'jev' ? 'Jev' : 'deterministic'
 }

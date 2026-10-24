@@ -1,8 +1,8 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Navigate, Outlet, Route, Routes, useNavigate } from 'react-router'
-import { api } from './api'
-import { LoadingRows } from './components/Loading'
-import { TopBar } from './components/TopBar'
+import { api, meQuery } from './api'
+import { LoadingRows } from './mascot/Loading'
+import { TopBar } from './layout/TopBar'
 import { Case } from './pages/Case'
 import { Cases } from './pages/Cases'
 import { Flow } from './pages/Flow'
@@ -36,9 +36,9 @@ export function AppRoutes() {
   )
 }
 
-// The shell for every screen behind the login; no session sends the visitor to /login.
+// The layout for signed-in screens; without a session it redirects to /login.
 function SignedIn() {
-  const me = useQuery({ queryKey: ['me'], queryFn: api.me })
+  const me = useQuery(meQuery)
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   if (me.isError) return <Navigate to="/login" replace />

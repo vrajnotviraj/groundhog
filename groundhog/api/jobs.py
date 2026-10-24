@@ -1,8 +1,4 @@
-"""Runs are worker processes: the API inserts a queued run document and spawns the CLI to fill it.
-
-A reaper thread per process waits for it to exit and marks the run as an error if the worker
-never closed it, keeping the tail of its stderr as the reason.
-"""
+"""Start worker processes for runs, close runs whose worker crashed, and cancel them."""
 
 import signal
 import subprocess
@@ -11,14 +7,15 @@ import threading
 import uuid
 from typing import Annotated
 
+from fastapi import Path
 from pydantic import BaseModel, StringConstraints
 
 from groundhog import config, db, events
-from groundhog.cases.store import NAME
+from groundhog.cases.schema import NAME
 
-Name = Annotated[str, StringConstraints(pattern=NAME)]
+PathName = Annotated[str, Path(pattern=NAME)]
 Vars = dict[Annotated[str, StringConstraints(pattern=r"^\w{1,64}$")], Annotated[str, StringConstraints(max_length=500)]]
-# An intent is a CLI argument, so it may not start with a dash and be read as an option.
+# An intent is passed as a CLI argument, so it must not start with a dash.
 Intent = Annotated[str, StringConstraints(pattern=r"^[^-\s]", max_length=2000)]
 
 
@@ -38,6 +35,11 @@ def var_args(vars: dict[str, str]) -> list[str]:
     return [arg for k, v in vars.items() for arg in ("--var", f"{k}={v}")]
 
 
+def run_flags(body: RunRequest) -> list[str]:
+    """The CLI options for a replay request: vars, headed and no-heal."""
+    return [*var_args(body.vars), *(["--headed"] if body.headed else []), *([] if body.heal else ["--no-heal"])]
+
+
 def start(kind: str, target: str, args: list[str], user: dict) -> str:
     """Insert a queued run, spawn its worker and return the run id."""
     run_id = uuid.uuid4().hex[:12]
@@ -47,17 +49,23 @@ def start(kind: str, target: str, args: list[str], user: dict) -> str:
                               stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
     _workers[run_id] = worker
     db.runs().update_one({"_id": run_id}, {"$set": {"pid": worker.pid}})
-    threading.Thread(target=reap, args=(run_id, worker), daemon=True).start()
+    threading.Thread(target=wait_for_exit, args=(run_id, worker), daemon=True).start()
     return run_id
 
 
-def reap(run_id: str, worker: subprocess.Popen) -> None:
+def wait_for_exit(run_id: str, worker: subprocess.Popen) -> None:
     """Wait for the worker to exit; close its run as an error if the worker did not."""
     _, stderr = worker.communicate()
     _workers.pop(run_id, None)
     error = "cancelled" if worker.returncode == -signal.SIGTERM else stderr[-2000:] or f"exit {worker.returncode}"
     db.runs().update_one({"_id": run_id, "status": {"$in": ACTIVE}},
                          {"$set": {"status": "error", "error": error, "finished_at": events.now()}})
+
+
+def close_orphaned_runs() -> None:
+    """Close as an error every open run a previous server spawned; its worker died with that server."""
+    db.runs().update_many({"status": {"$in": ACTIVE}, "pid": {"$exists": True}},
+                          {"$set": {"status": "error", "error": "server stopped", "finished_at": events.now()}})
 
 
 def cancel(run_id: str) -> bool:

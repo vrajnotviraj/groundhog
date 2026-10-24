@@ -1,9 +1,11 @@
+import re
+
 import pytest
 from pydantic import ValidationError
 
 from groundhog import db
 from groundhog.cases import store
-from groundhog.cases.schema import Assertion, Case, Expect, Step
+from groundhog.cases.schema import NAME, Assertion, Case, Expect, Step
 
 
 def _case():
@@ -64,3 +66,9 @@ def test_missing_vars_lists_unsupplied_placeholders():
     assert store.missing_vars(case, None) == ["name"]
     assert store.missing_vars(case, {"name": "gh-1"}) == []
     assert store.missing_vars(case, {"name": ""}) == ["name"]
+
+
+def test_derive_name_is_kebab_case_and_at_most_64_characters():
+    assert store.derive_name("Create an SMS template named X") == "create-an-sms-template-named"
+    long = store.derive_name(" ".join(["internationalization"] * 5))
+    assert re.match(NAME, long)

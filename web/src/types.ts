@@ -1,4 +1,4 @@
-// Shapes of the API's documents: the Mongo contract (spec §2) and the event contract (§3).
+// Shapes the API returns: cases, flows, runs and run events.
 
 export type Mode = 'static' | 'fallback' | 'healed' | 'failed' | 'skipped'
 export type Status = 'queued' | 'running' | 'passed' | 'failed' | 'error'
@@ -83,9 +83,7 @@ export interface RunSummary {
   vars: Vars
   status: Status
   created_at: string
-  started_at?: string
   finished_at?: string
-  started_by?: string
   total_ms?: number
   healed?: number
   modes?: Mode[]
@@ -171,14 +169,14 @@ export interface NoteEvent extends EventBase {
 
 export type RunEvent = CaseEvent | StepEvent | AssertionEvent | DecisionEvent | ActionEvent | ShotEvent | NoteEvent
 
-export interface JevUsage {
+interface JevUsage {
   calls: number
   input_tokens: number
   latency_ms: number
   model: string | null
 }
 
-export interface AnthropicUsage {
+interface AnthropicUsage {
   calls: number
   input_tokens: number
   output_tokens: number
@@ -188,7 +186,6 @@ export interface AnthropicUsage {
 export interface Run extends RunSummary {
   events: RunEvent[]
   usage?: { jev?: JevUsage; anthropic?: AnthropicUsage }
-  partial_trace?: unknown[]
 }
 
 export interface User {

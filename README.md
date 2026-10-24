@@ -212,14 +212,13 @@ groundhog/               Python package: engine, worker CLI, API
   config.py              env, budgets, paths, MONGO_URL
   db.py                  Mongo client, collections, indexes
   events.py              every run event: a console line and the run document
-  checks.py              readiness checks shared by init and the Settings screen
-  passwords.py           scrypt hash and verify
+  setup_checks.py        readiness checks shared by init and the Settings screen
   jev.py                 TypeSafe client, the questions, usage counter
   browser/               session+login · DOM snapshot+selectors · step execution
   agent/                 authoring loop · flow composer · optional text helper
   llm/client.py          Anthropic wrapper, used only for text
   cases/ runner/         case schema+store · replay orchestration
-  api/                   FastAPI: auth, jobs, one router per resource
+  api/                   FastAPI: auth, passwords, jobs, one router per resource
 web/                     the console: Vite, React, TypeScript
 start.sh                 checks every dependency, then starts the console
 ```

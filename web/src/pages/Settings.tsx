@@ -1,16 +1,16 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState, type FormEvent } from 'react'
-import { api } from '../api'
-import { Board } from '../components/Board'
-import { Button } from '../components/Button'
-import { Confirm } from '../components/Confirm'
-import { Field } from '../components/Field'
-import { Groundhog } from '../components/Groundhog'
-import { LoadError, LoadingRows } from '../components/Loading'
-import { PageTitle } from '../components/PageTitle'
-import { Select } from '../components/Select'
-import { Table, type Column } from '../components/Table'
-import { Tile } from '../components/Tile'
+import { api, isAdmin, meQuery, settingsHealthQuery } from '../api'
+import { Board } from '../layout/Board'
+import { Button } from '../forms/Button'
+import { Confirm } from '../forms/Confirm'
+import { Field } from '../forms/Field'
+import { Groundhog } from '../mascot/Groundhog'
+import { LoadError, LoadingRows } from '../mascot/Loading'
+import { PageTitle } from '../layout/PageTitle'
+import { Select } from '../forms/Select'
+import { Table, type Column } from '../table/Table'
+import { Tile } from '../layout/Tile'
 import { ago, count } from '../format'
 import type { Check, User } from '../types'
 import styles from './Settings.module.css'
@@ -18,8 +18,8 @@ import styles from './Settings.module.css'
 type Tab = 'Health' | 'Users' | 'About'
 
 export function Settings() {
-  const me = useQuery({ queryKey: ['me'], queryFn: api.me })
-  const tabs: Tab[] = me.data?.role === 'admin' ? ['Health', 'Users', 'About'] : ['Health', 'About']
+  const me = useQuery(meQuery)
+  const tabs: Tab[] = isAdmin(me.data) ? ['Health', 'Users', 'About'] : ['Health', 'About']
   const [tab, setTab] = useState<Tab>('Health')
   return (
     <>
@@ -40,7 +40,7 @@ export function Settings() {
 }
 
 function Health() {
-  const health = useQuery({ queryKey: ['settings-health'], queryFn: api.settingsHealth, staleTime: 60_000 })
+  const health = useQuery(settingsHealthQuery)
   const login = useMutation({ mutationFn: api.checkLogin })
   if (health.isError) return <LoadError what="the health checks" onRetry={health.refetch} />
   if (!health.data) return <LoadingRows count={4} />
@@ -151,7 +151,7 @@ function AddUser({ onAdded }: { onAdded: () => void }) {
 
 function About() {
   const health = useQuery({ queryKey: ['health'], queryFn: api.health })
-  const checks = useQuery({ queryKey: ['settings-health'], queryFn: api.settingsHealth, staleTime: 60_000 })
+  const checks = useQuery(settingsHealthQuery)
   const mongo = checks.data?.checks.find((c) => c.name.toLowerCase().includes('mongo'))
   return (
     <Board className={styles.about}>

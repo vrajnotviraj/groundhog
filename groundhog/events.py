@@ -1,8 +1,6 @@
-"""Everything a run says goes through here: one console line, and one event on the run document.
+"""Record what a run does: print one terminal line and append one event to its run document.
 
-A worker process opens a run with start(), emits events while it works and closes it with
-finish(). The API never writes events; it reads the document, so a run started from the
-terminal is watched live in the console just the same.
+A worker opens a run with start(), calls emit() while it works and closes it with finish().
 """
 
 import uuid
@@ -51,7 +49,7 @@ def emit(kind: str, **data) -> dict:
 
 
 def shot(page) -> None:
-    """Keep a small JPEG of the page for the run's viewer; a page that cannot be captured is skipped."""
+    """Store a small JPEG of the page on the open run; skip a page that cannot be captured."""
     if not _run_id:
         return
     try:
@@ -63,17 +61,16 @@ def shot(page) -> None:
 
 
 def record(**fields) -> None:
-    """Set extra fields on the open run, such as a partial authoring trace."""
+    """Set extra fields on the open run."""
     if _run_id:
         db.runs().update_one({"_id": _run_id}, {"$set": fields})
 
 
 def finish(status: str, **summary) -> None:
-    """Close the run: status is passed, failed or error; summary holds what the lists show."""
+    """Close the run as passed, failed or error, with AI usage and the given summary fields."""
     global _run_id
     if not _run_id:
         return
-    # Empty on a fully static run.
     spent = {k: v for k, v in (("jev", jev.usage_snapshot()), ("anthropic", client.usage_snapshot())) if v}
     fields = {"status": status, "finished_at": now(), "usage": spent,
               "ai_calls": sum(u.get("calls", 0) for u in spent.values()), **summary}
@@ -82,6 +79,7 @@ def finish(status: str, **summary) -> None:
 
 
 def _print(e: dict) -> None:
+    """Print the event as one terminal line; kinds the terminal does not show are skipped."""
     kind = e["kind"]
     if kind == "step":
         error = f" [red]— {escape(e['error'])}[/]" if e.get("error") else ""

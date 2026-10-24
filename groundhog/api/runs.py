@@ -13,18 +13,20 @@ from groundhog.api.auth import admin_only, current_user
 
 POLL_SECONDS = 0.5
 KEEP_ALIVE_SECONDS = 15
-OMIT_IN_LISTS = {"events": 0, "partial_trace": 0}  # projection and filter: list views leave the big fields out
+OMIT_IN_LISTS = {"events": 0, "partial_trace": 0}  # large fields that run lists leave out
 
 router = APIRouter(prefix="/runs", dependencies=[Depends(current_user)])
 
 
 def summary(run: dict) -> dict:
-    """A run document as the lists show it: id instead of _id, without events or trace."""
+    """A run as lists show it: `id` instead of `_id`, without events or trace."""
     return {"id": run["_id"], **{k: v for k, v in run.items() if k not in ("_id", *OMIT_IN_LISTS)}}
 
 
-def recent(target: str, limit: int) -> list[dict]:
-    return [summary(r) for r in db.runs().find({"target": target}, OMIT_IN_LISTS).sort("created_at", -1).limit(limit)]
+def recent(target: str, kinds: list[str], limit: int) -> list[dict]:
+    """The newest runs of one case or flow, newest first."""
+    query = {"target": target, "kind": {"$in": kinds}}
+    return [summary(r) for r in db.runs().find(query, OMIT_IN_LISTS).sort("created_at", -1).limit(limit)]
 
 
 def find(run_id: str) -> dict:
@@ -56,7 +58,7 @@ def stream_events(run_id: str, after: int = 0) -> StreamingResponse:
 
 
 def event_stream(run_id: str, after: int):
-    """Every event past `after`, the status whenever it changes, new events as the worker appends them, then `done`."""
+    """Yield events after `after`, then new ones as they arrive, the status when it changes, and `done` at the end."""
     last_beat = time.monotonic()
     sent_status = None
     while run := db.runs().find_one({"_id": run_id}):

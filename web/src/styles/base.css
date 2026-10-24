@@ -1,4 +1,4 @@
-/* Reset, type sizes and the board/tile primitives every screen is made of. */
+/* Reset, type and the shared tile and page classes. */
 *, *::before, *::after { box-sizing: border-box; margin: 0; }
 
 html { -webkit-text-size-adjust: 100%; scroll-behavior: smooth; }
@@ -32,12 +32,10 @@ img { display: block; max-width: 100%; }
 .fail { color: var(--gh-fail); white-space: pre-line; }
 .small { font: var(--gh-small); }
 
-
-.page > * { min-width: 0; }
 .page { display: grid; gap: var(--gh-gap); max-width: calc(var(--gh-column) + 32px); margin: 0 auto; padding: 24px 16px 64px; }
 
-/* each screen's blocks rise in, one after another; the end state is the resting layout */
-.page > * { animation: enter 420ms cubic-bezier(.2, .8, .2, 1) both; }
+/* Page blocks fade in one after another. */
+.page > * { min-width: 0; animation: enter 420ms cubic-bezier(.2, .8, .2, 1) both; }
 .page > :nth-child(2) { animation-delay: 60ms; }
 .page > :nth-child(3) { animation-delay: 120ms; }
 .page > :nth-child(4) { animation-delay: 180ms; }

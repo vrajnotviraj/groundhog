@@ -8,13 +8,13 @@ from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from groundhog import config, db
-from groundhog.api import auth, cases, flows, runs, settings
+from groundhog.api import auth, cases, flows, jobs, runs, settings
 
 WEB_DIST = config.ROOT / "web" / "dist"
 
 
 class SinglePageApp(StaticFiles):
-    """Static files, with index.html for any path that is not a file, so client routes load."""
+    """Serve static files, and index.html for any other path outside /api."""
 
     async def get_response(self, path: str, scope):
         try:
@@ -28,6 +28,7 @@ class SinglePageApp(StaticFiles):
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     db.ensure_indexes()
+    jobs.close_orphaned_runs()
     yield
 
 
@@ -39,8 +40,7 @@ for module in (auth, cases, flows, runs, settings):
 
 @app.get("/api/health")
 def health() -> dict:
-    mongo = db.ping()
-    return {"ok": mongo, "mongo": mongo, "version": version("groundhog")}
+    return {"mongo": db.ping(), "version": version("groundhog")}
 
 
 if WEB_DIST.is_dir():

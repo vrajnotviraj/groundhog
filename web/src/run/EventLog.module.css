@@ -1,0 +1,21 @@
+.log { display: grid; gap: var(--gh-gap); min-width: 0; }
+.group { display: grid; gap: var(--gh-gap); }
+.group + .group { padding-top: 16px; }
+
+.case { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--gh-gap); }
+.caseName { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 0 16px; min-height: 28px; font-weight: 500; }
+
+.row { display: grid; grid-template-columns: 88px minmax(0, 1fr); gap: var(--gh-gap); scroll-margin-top: 16px; }
+.kind { display: flex; align-items: flex-start; padding: 14px 12px; font: 500 13px/1.45 var(--gh-font); }
+.body { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; align-items: baseline; padding: 13px 16px; }
+.body strong { font-weight: 500; }
+.wide { grid-column: 1 / -1; }
+
+.stepBody { display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; gap: 8px 12px; align-items: baseline; padding: 13px 16px; }
+.index { color: var(--gh-muted); text-align: right; }
+.text { display: grid; gap: 2px; min-width: 0; }
+.ms { color: var(--gh-muted); text-align: right; }
+
+@media (max-width: 639px) {
+  .row { grid-template-columns: 72px minmax(0, 1fr); }
+}

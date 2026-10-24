@@ -1,10 +1,6 @@
-"""Static replay with a Jev fallback only on failure.
+"""Replay a saved case step by step, asking Jev only to heal a step no selector matches and to judge "jev" assertions.
 
-Every run after authoring costs zero AI calls until the UI drifts: each step
-walks selector → fallback_selectors deterministically; only a step that still
-fails wakes Jev (one call). A successful heal is persisted into the case JSON
-and the next run is fully static again. "jev" assertions are the exception:
-they are judged by Jev on the final page.
+Each step tries its selector, then its fallback selectors. A heal from a passing run is saved into the case.
 """
 
 import re
@@ -18,10 +14,9 @@ from groundhog.browser.actions import Ctx, check_expects, goto_app, perform, res
 from groundhog.browser.session import Session
 from groundhog.browser.snapshot import observe, selectors_for
 from groundhog.cases.schema import Assertion, Case, Expect, Heal
-from groundhog.cases.store import render, save
+from groundhog.cases.store import count_run, render, save
 
-# A heal that flips a step's intent is worse than a failed step: it can delete
-# the wrong thing or silently skip the action the test exists for.
+# Words that mark a committing or a backing-out action; a heal must not swap one for the other.
 COMMITTING = re.compile(r"delete|remove|submit|confirm|save|create", re.I)
 BACKING_OUT = re.compile(r"cancel|close|back|dismiss|discard", re.I)
 
@@ -48,13 +43,11 @@ class AssertionResult:
 
 @dataclass
 class RunResult:
-    case: str
     passed: bool = False
     steps: list[StepResult] = field(default_factory=list)
     assertions: list[AssertionResult] = field(default_factory=list)
     healed: int = 0
     total_ms: int = 0
-    started_at: str = ""
 
 
 def _check_deterministic(page, a: Assertion, ctx: Ctx) -> AssertionResult:
@@ -77,8 +70,7 @@ NEGATED = re.compile(r"\b(no longer|not|never|absent|gone|removed|deleted|disapp
 
 
 def _absent(outcomes: list[str], snap, ctx: Ctx) -> bool:
-    """An absence outcome about a var value is a literal check code can settle:
-    when every clause is negated and no var value is anywhere on the page, it holds."""
+    """True when every outcome is negated and none of the var values it names is on the page."""
     values = [v for v in (ctx.vars or {}).values() if len(v) >= 3 and any(v in o for o in outcomes)]
     if not values or not all(NEGATED.search(o) for o in outcomes):
         return False
@@ -88,8 +80,7 @@ def _absent(outcomes: list[str], snap, ctx: Ctx) -> bool:
 
 def _judge(page, case: Case, a: Assertion, ctx: Ctx, retries: int = 2) -> AssertionResult:
     goal = render(case.intent, ctx.vars)
-    # One Noul per condition: "is Transactional, has X and maps to Y" judged whole reads
-    # as unsure, so a compound assertion is split and the weakest clause decides.
+    # Judge each clause of a compound assertion separately; the weakest clause decides.
     outcomes = _clauses(render(a.assertion, ctx.vars))
     try:
         snap = observe(page)
@@ -100,7 +91,7 @@ def _judge(page, case: Case, a: Assertion, ctx: Ctx, retries: int = 2) -> Assert
         for _ in range(retries):
             if p >= config.JUDGE_THRESHOLD:
                 break
-            # Async data (metrics, lists) can land after the step settles — re-judge.
+            # Data can load after the step settles, so judge again.
             page.wait_for_timeout(1500)
             settle(page)
             p = min(jev.judge(observe(page), o, goal) for o in outcomes)
@@ -115,7 +106,7 @@ def run_case(case: Case, session: Session, vars: dict[str, str] | None = None,
              heal: bool = True) -> RunResult:
     page = session.page
     ctx = Ctx(ws=session.ws, vars=vars)
-    result = RunResult(case=case.name, started_at=datetime.now(timezone.utc).isoformat())
+    result = RunResult()
     clock = time.monotonic()
 
     goto_app(page, resolve_path(case.start_path, ctx))
@@ -130,8 +121,7 @@ def run_case(case: Case, session: Session, vars: dict[str, str] | None = None,
             outcome = run_step(page, step, ctx)
             mode, selector, error = outcome.mode, outcome.selector or step.selector, outcome.error
 
-            # Heal only when nothing matched: a resolved selector whose expects failed is a
-            # page problem (rejected submit, wrong state), and a new selector can't fix that.
+            # Heal only when no selector matched; a failed expectation is a page problem.
             if not outcome.ok and heal and step.action != "goto" and outcome.selector is None:
                 fix = _try_heal(page, step, ctx)
                 if fix:
@@ -144,7 +134,7 @@ def run_case(case: Case, session: Session, vars: dict[str, str] | None = None,
                 s = StepResult(step.id, step.description, mode, selector, ms, outcome.drift)
             else:
                 s = StepResult(step.id, step.description, "failed", selector, ms, outcome.drift, error)
-                aborted = True  # linear flows can't recover once a step leaves the wrong state
+                aborted = True  # later steps depend on this one
         result.steps.append(s)
         events.emit("step", i=i, **asdict(s))
         if s.mode != "skipped":
@@ -162,12 +152,10 @@ def run_case(case: Case, session: Session, vars: dict[str, str] | None = None,
                      and all(a.passed for a in result.assertions))
     result.total_ms = int((time.monotonic() - clock) * 1000)
 
-    # Persist heals only on a passing run, so a wrong-element heal that merely
-    # didn't throw can't poison every future run.
+    # Save heals only from a passing run.
     if result.passed and healed_steps:
-        _persist_heals(case, healed_steps)
-    case.meta.runs += 1
-    save(case)
+        _save_heals(case, healed_steps)
+    count_run(case.name)
     return result
 
 
@@ -180,8 +168,7 @@ def _contradicts(step, el) -> bool:
 
 
 def _try_heal(page, step, ctx: Ctx) -> Heal | None:
-    """One Jev call: it picks an element from the live table, code derives the
-    selector. Returns a Heal when the replacement actually worked, else None."""
+    """Ask Jev for a replacement element once; return a Heal when its selector works, else None."""
     try:
         el, p = jev.heal(observe(page), step)
         if el is None or p < config.HEAL_THRESHOLD or el.frame != step.frame or _contradicts(step, el):
@@ -191,13 +178,13 @@ def _try_heal(page, step, ctx: Ctx) -> Heal | None:
         if step.expects and not check_expects(page, step.expects, ctx):
             return None
     except Exception:
-        return None  # no key, no network, or the replacement didn't work — fail honestly
+        return None  # no key, no network, or the new selector did not work
     return Heal(step=step.id, old=step.selector or "", new=sel,
                 at=datetime.now(timezone.utc).isoformat(),
                 reason=f"jev picked [{el.role} {el.label}] p={p:.2f}")
 
 
-def _persist_heals(case: Case, healed: list[tuple[str, Heal]]) -> None:
+def _save_heals(case: Case, healed: list[tuple[str, Heal]]) -> None:
     by_id = {s.id: s for s in case.steps}
     for step_id, fix in healed:
         step = by_id[step_id]
@@ -207,3 +194,4 @@ def _persist_heals(case: Case, healed: list[tuple[str, Heal]]) -> None:
             step.fallback_selectors.append(old)  # keep the old one as a fallback
         step.healed_count += 1
         case.meta.heals.append(fix)
+    save(case)

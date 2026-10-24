@@ -6,12 +6,12 @@ import time
 import pytest
 from fastapi.testclient import TestClient
 
-from groundhog import checks, config, db, events
+from groundhog import config, db, events, setup_checks
 from groundhog.api import auth, jobs, runs
 from groundhog.api.app import app
+from groundhog.api.passwords import hash_password, verify_password
 from groundhog.cases import store
-from groundhog.cases.schema import Case, Step
-from groundhog.passwords import hash_password, verify_password
+from groundhog.cases.schema import Case, Flow, Step
 
 PASSWORD = "correct-horse"
 EXIT_SOON = "import time; time.sleep(0.5)"
@@ -105,19 +105,19 @@ def test_mutating_request_from_a_foreign_origin_is_refused():
     assert own.status_code == 200
 
 
-def test_health_is_public_and_says_only_booleans_and_version():
+def test_health_is_public_and_says_only_mongo_and_version():
     body = TestClient(app).get("/api/health").json()
-    assert set(body) == {"ok", "mongo", "version"}
+    assert set(body) == {"mongo", "version"}
 
 
 def test_settings_health_never_returns_an_env_value(monkeypatch):
     monkeypatch.setattr(config, "BASE_URL", "https://app.example.com")
     monkeypatch.setattr(config, "LOGIN_PASS", "hunter2-secret")
     monkeypatch.setattr(config, "TYPESAFE_API_KEY", "tk-secret-value")
-    monkeypatch.setattr(checks, "check_chromium", lambda: (True, "Chromium launches"))
-    monkeypatch.setattr(checks, "check_app", lambda: (False, f"app unreachable ({config.BASE_URL})"))
-    monkeypatch.setattr(checks, "check_jev", lambda: (False, f"Jev — bad key {config.TYPESAFE_API_KEY}"))
-    monkeypatch.setattr(checks, "check_login", lambda: (False, f"login — {config.LOGIN_PASS} rejected"))
+    monkeypatch.setattr(setup_checks, "check_chromium", lambda: (True, "Chromium launches"))
+    monkeypatch.setattr(setup_checks, "check_app", lambda: (False, f"app unreachable ({config.BASE_URL})"))
+    monkeypatch.setattr(setup_checks, "check_jev", lambda: (False, f"Jev — bad key {config.TYPESAFE_API_KEY}"))
+    monkeypatch.setattr(setup_checks, "check_login", lambda: (False, f"login — {config.LOGIN_PASS} rejected"))
     client = signed_in()
 
     text = client.get("/api/settings/health").text + client.post("/api/settings/check-login").text
@@ -252,3 +252,21 @@ def test_round_trip_login_list_run_watch_cancel(monkeypatch):
     assert (run["status"], run["error"]) == ("error", "cancelled")
     assert client.get("/api/runs").json()[0]["id"] == run_id
     assert "events" not in client.get("/api/runs").json()[0]
+
+
+def test_case_and_flow_with_one_name_show_only_their_own_runs():
+    store.save_flow(Flow(name="demo", chain=["demo"]))
+    db.runs().insert_many([{"_id": "case-run", "kind": "run", "target": "demo", "created_at": "1", "events": []},
+                           {"_id": "flow-run", "kind": "flow", "target": "demo", "created_at": "2", "events": []}])
+    client = signed_in()
+    assert [r["id"] for r in client.get("/api/cases/demo").json()["runs"]] == ["case-run"]
+    assert [r["id"] for r in client.get("/api/flows/demo").json()["runs"]] == ["flow-run"]
+
+
+def test_server_start_closes_runs_a_previous_server_spawned():
+    db.runs().insert_many([{"_id": "spawned", "status": "running", "pid": 1, "events": []},
+                           {"_id": "terminal", "status": "running", "events": []}])
+    with TestClient(app):
+        pass
+    assert db.runs().find_one({"_id": "spawned"})["status"] == "error"
+    assert db.runs().find_one({"_id": "terminal"})["status"] == "running"

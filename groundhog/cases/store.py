@@ -1,4 +1,4 @@
-"""Cases and flows live in Mongo, one document per name, plus {{var}} rendering."""
+"""Load and save cases and flows in Mongo, name rules, and {{var}} rendering."""
 
 import re
 from datetime import datetime, timezone
@@ -7,23 +7,26 @@ from groundhog import db
 from groundhog.cases.schema import Case, Flow
 
 VAR = re.compile(r"\{\{\s*(\w+)\s*\}\}")
-NAME = r"^[a-z0-9][a-z0-9-]{0,63}$"  # case and flow names: lowercase kebab-case
+
+
+def derive_name(intent: str) -> str:
+    """A kebab-case name from the first five words of the intent, at most 64 characters."""
+    words = re.findall(r"[a-z0-9]+", intent.lower())
+    return "-".join(words[:5])[:64].strip("-") or "case"
 
 
 def render(text: str, vars: dict[str, str] | None = None) -> str:
-    """Substitute {{name}} template vars. Applied to values, assertions, and
-    selectors at run time, so one case serves many data values — including a
-    step that targets an entity created earlier in the same run by its
-    per-run name."""
+    """Substitute {{name}} vars; unknown vars are left as is."""
     return VAR.sub(lambda m: (vars or {}).get(m.group(1), m.group(0)), text)
 
 
 def missing_vars(case: Case, vars: dict[str, str] | None) -> list[str]:
-    """{{var}}s the intent declares that the caller did not supply; running with them
-    unrendered types the literal braces into the app. Only the intent counts: step
-    values may carry the app's own {{placeholders}}, which are content, not vars."""
+    """Vars named in the intent that the caller left unset or empty.
+
+    Only the intent counts: step values may hold the app's own {{placeholders}}.
+    """
     used = dict.fromkeys(VAR.findall(case.intent))
-    return [k for k in used if not (vars or {}).get(k)]  # unset or empty both type braces
+    return [k for k in used if not (vars or {}).get(k)]
 
 
 def _put(collection, model) -> None:
@@ -52,6 +55,11 @@ def load(name: str) -> Case:
 
 def save(case: Case) -> None:
     _put(db.cases(), case)
+
+
+def count_run(name: str) -> None:
+    """Add one to the case's run count without touching the rest of the document."""
+    db.cases().update_one({"_id": name}, {"$inc": {"meta.runs": 1}})
 
 
 def delete(name: str) -> bool:

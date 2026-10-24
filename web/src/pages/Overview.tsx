@@ -1,19 +1,19 @@
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router'
-import { api, type RunOptions } from '../api'
-import { Board } from '../components/Board'
-import { Button } from '../components/Button'
-import { Empty } from '../components/Empty'
-import { Figure } from '../components/Figure'
-import type { Mood } from '../components/Groundhog'
-import { LoadError, LoadingRows } from '../components/Loading'
-import { RunForm } from '../components/RunForm'
-import { RunTable } from '../components/RunTable'
-import { Mascot } from '../components/Mascot'
-import { Select } from '../components/Select'
+import { Link } from 'react-router'
+import { api, casesQuery, type RunOptions } from '../api'
+import { Board } from '../layout/Board'
+import { Button } from '../forms/Button'
+import { Empty } from '../mascot/Empty'
+import { Figure } from '../layout/Figure'
+import type { Mood } from '../mascot/Groundhog'
+import { LoadError, LoadingRows } from '../mascot/Loading'
+import { RunForm } from '../run/RunForm'
+import { RunTable } from '../run/RunTable'
+import { Mascot } from '../mascot/Mascot'
+import { Select } from '../forms/Select'
 import { ago, count, intentVars, isToday, runTitle } from '../format'
-import { isLive } from '../live'
+import { isLive, useStartRun } from '../run/live'
 import type { RunSummary } from '../types'
 import styles from './Overview.module.css'
 
@@ -40,7 +40,7 @@ export function Overview() {
           <div className={styles.verdictText}>
             <p className={styles.date}>{new Date().toLocaleDateString('en', { weekday: 'long', day: 'numeric', month: 'long' })}</p>
             <h1 className={styles.headline}>{runs.data ? headline(today.length, passed, failed, live) : 'Checking today\'s runs'}</h1>
-            {runs.data && <p className={styles.subline}>{finding(today, healed)}</p>}
+            {runs.data && <p className={styles.subline}>{todaySummary(today, healed)}</p>}
             {today.length > 0 && <TodayStrip runs={today} />}
             <Button variant="primary" className={styles.run} onClick={() => setPicking(!picking)}>{picking ? 'Close' : 'Run a case'}</Button>
           </div>
@@ -60,7 +60,7 @@ export function Overview() {
   )
 }
 
-// The day's verdict, the one sentence the screen answers.
+// Headline for today's runs.
 function headline(runs: number, passed: number, failed: number, live: number): string {
   if (!runs) return 'No runs yet today'
   if (live) return `${count(live, 'run')} replaying now`
@@ -69,13 +69,14 @@ function headline(runs: number, passed: number, failed: number, live: number): s
   return `${passed} of ${runs} runs passed`
 }
 
-function finding(today: RunSummary[], healed: number): string {
+// The line under the headline: healed steps and when the last run started.
+function todaySummary(today: RunSummary[], healed: number): string {
   if (!today.length) return 'The groundhog is asleep. Run a case to wake it up.'
   const last = today.reduce((a, b) => (a.created_at > b.created_at ? a : b))
   return `${count(healed, 'healed step')} · last run ${ago(last.created_at)}`
 }
 
-// Today's runs, oldest first, one tile each in the colour of how it ended.
+// Today's runs, oldest first, one tile each coloured by status.
 function TodayStrip({ runs }: { runs: RunSummary[] }) {
   return (
     <ol className={styles.strip} aria-label="Today's runs">
@@ -96,15 +97,11 @@ function LatestRuns({ runs, isError, onRetry }: { runs?: RunSummary[]; isError: 
   return <RunTable runs={runs.slice(0, 6)} />
 }
 
-// Pick a saved case, fill its vars, start it and follow the run.
+// Pick a saved case, fill its vars and start a run.
 function CasePicker() {
-  const cases = useQuery({ queryKey: ['cases'], queryFn: api.cases })
+  const cases = useQuery(casesQuery)
   const [name, setName] = useState('')
-  const navigate = useNavigate()
-  const start = useMutation({
-    mutationFn: ({ name, options }: { name: string; options: RunOptions }) => api.runCase(name, options),
-    onSuccess: ({ run_id }) => navigate(`/runs/${run_id}`),
-  })
+  const start = useStartRun(({ name, options }: { name: string; options: RunOptions }) => api.runCase(name, options))
   if (cases.isError) return <LoadError what="the cases" onRetry={cases.refetch} />
   if (!cases.data) return <LoadingRows count={1} />
   const chosen = cases.data.find((c) => c.name === name) ?? cases.data[0]

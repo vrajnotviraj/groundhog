@@ -62,7 +62,7 @@ fi
 ok mongo "reachable at $MONGO_HOST"
 
 chromium_launches() {
-  uv run python -c "import sys; from groundhog.checks import check_chromium; sys.exit(not check_chromium()[0])" >/dev/null 2>&1
+  uv run python -c "import sys; from groundhog.setup_checks import check_chromium; sys.exit(not check_chromium()[0])" >/dev/null 2>&1
 }
 if ! chromium_launches; then
   uv run playwright install chromium || fail chromium "install failed — run: uv run playwright install chromium"

@@ -1,4 +1,4 @@
-/* Groundhog brand tokens and app roles: a brand change touches this file only. */
+/* Colour, type and spacing tokens. */
 :root {
   /* colour */
   --gh-ground: #E5E1D8;
@@ -11,7 +11,7 @@
   --gh-accent-ink: #FFFFFF;
   --gh-fail: #A8231B;
   --gh-fail-ink: #FFFFFF;
-  /* sunrise: the one contrast hue, on the primary action, live runs and healed steps; ink text on it */
+  /* sun: primary action, live runs, healed steps */
   --gh-sun: #F5C518;
   --gh-sun-hover: #FFD43B;
   --gh-sun-ink: #2A1D17;

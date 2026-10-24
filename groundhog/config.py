@@ -34,9 +34,7 @@ SETTLE_TIMEOUT_MS = int(os.environ.get("SETTLE_TIMEOUT_MS", "1000"))
 STEP_TIMEOUT_MS = int(os.environ.get("STEP_TIMEOUT_MS", "10000"))
 # First page load of a session; a slow dev environment needs more than a step.
 PAGE_LOAD_MS = int(os.environ.get("PAGE_LOAD_MS", "45000"))
-# Once an element's existence is established, actions and confirmations should be
-# quick — a short per-attempt budget keeps the fallback walk from multiplying the
-# full timeout, and fails a selector that matches nothing fast instead of at 8s.
+# Per-attempt timeout once an element is known to exist.
 ACTION_PROBE_MS = int(os.environ.get("ACTION_PROBE_MS", "2000"))
 # Poll interval for the cheap existence waits (readiness + fail-fast probe).
 READINESS_POLL_MS = int(os.environ.get("READINESS_POLL_MS", "250"))
@@ -48,7 +46,6 @@ JUDGE_THRESHOLD = float(os.environ.get("JUDGE_THRESHOLD", "0.6"))
 HEAL_THRESHOLD = float(os.environ.get("HEAL_THRESHOLD", "0.6"))
 
 ROOT = Path.cwd()
-# Cases, flows, runs, users and sessions all live in this database.
 MONGO_URL = os.environ.get("MONGO_URL", "mongodb://localhost:27017/groundhog")
 # The first console admin, created by `groundhog db seed` when there are no users.
 ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "")

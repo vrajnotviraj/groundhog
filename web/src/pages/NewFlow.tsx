@@ -1,14 +1,15 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router'
-import { api } from '../api'
-import { Board } from '../components/Board'
-import { Button } from '../components/Button'
-import { CaseStack } from '../components/CaseStack'
-import { Field } from '../components/Field'
-import { PageTitle } from '../components/PageTitle'
-import { toVars, VarRows } from '../components/VarRows'
+import { api, casesQuery, settingsHealthQuery } from '../api'
+import { Board } from '../layout/Board'
+import { Button } from '../forms/Button'
+import { CaseStack } from '../forms/CaseStack'
+import { Field } from '../forms/Field'
+import { PageTitle } from '../layout/PageTitle'
+import { toVars, VarRows } from '../forms/VarRows'
 import { NAME_PATTERN } from '../format'
+import { useStartRun } from '../run/live'
 import form from '../styles/form.module.css'
 import type { FlowCase } from '../types'
 import styles from './NewFlow.module.css'
@@ -27,12 +28,8 @@ export function NewFlow() {
 
 function Compose() {
   const [intent, setIntent] = useState('')
-  const health = useQuery({ queryKey: ['settings-health'], queryFn: api.settingsHealth, staleTime: 60_000 })
-  const navigate = useNavigate()
-  const compose = useMutation({
-    mutationFn: () => api.composeFlow({ intent }),
-    onSuccess: ({ run_id }) => navigate(`/runs/${run_id}`),
-  })
+  const health = useQuery(settingsHealthQuery)
+  const compose = useStartRun(() => api.composeFlow({ intent }))
   const keySet = health.data?.optional.find((o) => o.name.includes('ANTHROPIC'))?.set
   const submit = (e: FormEvent) => {
     e.preventDefault()
@@ -57,7 +54,7 @@ function ByHand() {
   const [vars, setVars] = useState<[string, string][]>([])
   const [chain, setChain] = useState<FlowCase[]>([])
   const [cleanup, setCleanup] = useState<FlowCase[]>([])
-  const cases = useQuery({ queryKey: ['cases'], queryFn: api.cases })
+  const cases = useQuery(casesQuery)
   const names = (cases.data ?? []).map((c) => c.name)
   const navigate = useNavigate()
   const save = useMutation({

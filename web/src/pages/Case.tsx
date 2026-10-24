@@ -1,17 +1,18 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
-import { api, type RunOptions } from '../api'
-import { Board } from '../components/Board'
-import { Button } from '../components/Button'
-import { Confirm } from '../components/Confirm'
-import { Empty } from '../components/Empty'
-import { LoadError, LoadingRows } from '../components/Loading'
-import { PageTitle } from '../components/PageTitle'
-import { RunForm } from '../components/RunForm'
-import { RunTable } from '../components/RunTable'
-import { Table, type Column } from '../components/Table'
-import { ago, intentVars } from '../format'
+import { api, casesQuery, isAdmin, meQuery, type RunOptions } from '../api'
+import { Board } from '../layout/Board'
+import { Button } from '../forms/Button'
+import { Confirm } from '../forms/Confirm'
+import { Empty } from '../mascot/Empty'
+import { LoadError, LoadingRows } from '../mascot/Loading'
+import { PageTitle } from '../layout/PageTitle'
+import { RunForm } from '../run/RunForm'
+import { RunTable } from '../run/RunTable'
+import { Table, type Column } from '../table/Table'
+import { ago, checkedBy, intentVars } from '../format'
+import { useStartRun } from '../run/live'
 import form from '../styles/form.module.css'
 import type { Assertion, Case as CaseDoc, Heal, Step } from '../types'
 
@@ -25,7 +26,7 @@ const STEP_COLUMNS: Column<Step>[] = [
 ]
 
 const ASSERTION_COLUMNS: Column<Assertion>[] = [
-  { header: 'Checked by', width: '120px', role: 'key', cell: (a) => (a.mode === 'jev' ? 'Jev' : 'deterministic') },
+  { header: 'Checked by', width: '120px', role: 'key', cell: (a) => checkedBy(a.mode) },
   { header: 'Assertion', role: 'identity', width: 'minmax(0, 1fr)', cell: (a) => a.assertion },
 ]
 
@@ -40,18 +41,15 @@ const HEAL_COLUMNS: Column<Heal>[] = [
 export function Case() {
   const name = useParams().name!
   const detail = useQuery({ queryKey: ['case', name], queryFn: () => api.case(name) })
-  const me = useQuery({ queryKey: ['me'], queryFn: api.me })
+  const me = useQuery(meQuery)
   const [panel, setPanel] = useState<'run' | 'json' | null>(null)
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const run = useMutation({
-    mutationFn: (options: RunOptions) => api.runCase(name, options),
-    onSuccess: ({ run_id }) => navigate(`/runs/${run_id}`),
-  })
+  const run = useStartRun((options: RunOptions) => api.runCase(name, options))
   const remove = useMutation({
     mutationFn: () => api.deleteCase(name),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['cases'] })
+      queryClient.invalidateQueries({ queryKey: casesQuery.queryKey })
       navigate('/cases')
     },
   })
@@ -67,7 +65,7 @@ export function Case() {
         <Button variant="primary" onClick={() => toggle('run')}>Run</Button>
         <Button onClick={() => toggle('json')}>Edit JSON</Button>
         <Button variant="text" onClick={() => download(doc)}>Download JSON</Button>
-        {me.data?.role === 'admin' && (
+        {isAdmin(me.data) && (
           <Confirm label="Delete" question={`Delete the case ${name}? Its runs stay.`} onConfirm={() => remove.mutate()} />
         )}
       </PageTitle>
@@ -105,7 +103,7 @@ function CaseBlocks({ doc, updatedAt }: { doc: CaseDoc; updatedAt: string }) {
   )
 }
 
-// The case as editable JSON; the server's validation errors show under it.
+// The case as editable JSON, with the server's validation errors below.
 function JsonEditor({ doc, onSaved }: { doc: CaseDoc; onSaved: () => void }) {
   const [text, setText] = useState(JSON.stringify(doc, null, 2))
   const queryClient = useQueryClient()

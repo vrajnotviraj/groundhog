@@ -1,21 +1,21 @@
-import { useMutation, useQuery } from '@tanstack/react-query'
-import { Link, useNavigate } from 'react-router'
+import { useQuery } from '@tanstack/react-query'
+import { Link } from 'react-router'
 import { api } from '../api'
-import { Button } from '../components/Button'
-import { Empty } from '../components/Empty'
-import { LastRun } from '../components/LastRun'
-import { LoadError, LoadingRows } from '../components/Loading'
-import { PageTitle } from '../components/PageTitle'
-import { Table, type Column } from '../components/Table'
+import { Button } from '../forms/Button'
+import { Empty } from '../mascot/Empty'
+import { LastRun } from '../run/LastRun'
+import { LoadError, LoadingRows } from '../mascot/Loading'
+import { PageTitle } from '../layout/PageTitle'
+import { Table, type Column } from '../table/Table'
 import { count } from '../format'
+import { useStartRun } from '../run/live'
 import type { FlowCase, FlowSummary } from '../types'
 
 const sentence = (cases: FlowCase[]) => cases.map((c) => c.case).join(', then ') || '-'
 
 export function Flows() {
   const flows = useQuery({ queryKey: ['flows'], queryFn: api.flows })
-  const navigate = useNavigate()
-  const run = useMutation({ mutationFn: (name: string) => api.runFlow(name), onSuccess: ({ run_id }) => navigate(`/runs/${run_id}`) })
+  const run = useStartRun((name: string) => api.runFlow(name))
 
   const columns: Column<FlowSummary>[] = [
     { header: 'Name', role: 'identity', width: 'minmax(0, 1.5fr)', cell: (f) => <Link to={`/flows/${f.name}`}>{f.name}</Link> },
