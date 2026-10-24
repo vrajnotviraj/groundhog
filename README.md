@@ -6,219 +6,83 @@
 
 <p align="center"><b>Describe a test in English once. Replay it forever, for free.</b></p>
 
-Groundhog is end-to-end testing for SaaS apps. That's it.
+Groundhog is end-to-end testing for SaaS apps. You write what a user does in a sentence, and groundhog turns it into a test that runs on every deploy without calling an AI model.
 
-## Why this exists
+## The problem
 
-An AI agent can drive a browser today. Every demo proves that. What none of
-them fix is memory. An agent opening your app for the thousandth time still
-behaves like it's the first: the same blind clicking around the DOM, the same
-tokens spent finding the same button, every single run.
+AI agents can click through a browser now. You've seen the demos.
 
-So groundhog pays that cost once. You describe a test in English, it drives
-your real app one time, and it saves what it did as a JSON case of ordinary
-Playwright selectors. Every run after that replays the JSON with zero AI
-calls. When a selector breaks, 1 small AI call heals it and the JSON is
-rewritten.
+But they forget everything between runs. The thousandth run of the same test looks exactly like the first: the agent reads the page, hunts for the same button, and pays for the same tokens. Your test bill grows with every deploy, and the test is only as steady as the model's mood that day.
 
-Like the movie: it wakes up, sees the same day, and gets a little better at
-it.
+Groundhog pays that cost once.
 
-## Quick start
+## How it works
 
-You need [uv](https://docs.astral.sh/uv/), Node 20 or later, MongoDB (or
-Docker to run one), a TypeSafe API key from
-[console.typesafe.ai](https://console.typesafe.ai), and an app to test.
+**1. Describe it.** Type the test the way you'd explain it to a new teammate:
+
+> Create an SMS template named {{name}} and verify it appears in the templates list.
+
+**2. Groundhog drives your app, once.** It opens your real app, does the task, and saves every step it took as plain, readable selectors. The `{{name}}` becomes a variable, so the same test can run with fresh data every time.
+
+**3. Every run after that is free.** Replays read the saved steps and check each one. That takes a few seconds per test and 0 model calls.
+
+**4. When your UI changes, it heals.** If a button moves or gets renamed, 1 small AI call finds the element the step meant, checks that it worked, and updates the saved test. A heal is only kept when the whole run passes, so a bad guess never sticks.
+
+Like the movie. It wakes up, lives the same day again, and gets a little better at it each time.
+
+## What you can do
+
+**Write tests in English.** One sentence per test. Groundhog does the clicking, picks durable selectors (test ids first, then labels and roles), and adds a check after each step so a click that did nothing counts as a failure.
+
+**Run them with different data.** Every `{{variable}}` is filled at run time. Leave it empty and groundhog stamps a fresh value like `gh-1729`, so 2 runs never trip over each other's leftovers.
+
+**Chain tests into flows.** A flow strings saved tests into a longer story: create a template, use it in a campaign, delete both. One browser, one login, shared variables. Describe the whole flow in English and groundhog reuses the tests you already have and writes the missing ones in the same pass.
+
+**Clean up after yourself.** Cleanup steps in a flow run even when the flow fails, and a flow only passes when its cleanup passes too.
+
+**Check things in plain English.** "The template appears in the list" works as an assertion. Groundhog judges it against the final page and shows how confident it is. Exact checks like "the URL contains /templates" skip the AI completely.
+
+**See where your AI money goes.** Every run reports how many AI calls it made and why. A passing test with no English assertions makes 0, and the run page says so.
+
+## The console
+
+Everything lives in a web console your whole team can sign into. A run you start from the terminal shows up there too, live.
+
+**Overview.** Opens with the day's verdict in big type: "All 10 runs passed" or "1 of 10 failed today". A strip of today's runs sits under it, one square per run in green or red, and the latest runs are listed below.
+
+**Cases.** Every test with its steps, its last run and a yellow tag when it has healed. Search by name or intent, run any test in 1 click, or write a new one from a sentence.
+
+**Flows.** Build a chain from your saved tests, set shared variables and cleanup, or describe a new flow in English.
+
+**Run.** Watch a test as it happens. Each step lands as a tile coloured by how it ran (replayed, used a fallback, healed or failed), with a screenshot of the page after each step. Click a tile to jump to that step. When the run ends you see every assertion, its reasoning and what it cost.
+
+**Runs.** The full history, filtered by kind, status or test name.
+
+**Settings.** A health check for everything groundhog needs (the app, the login, the database, the AI service), plus users and roles.
+
+### Meet the groundhog
+
+The console has a mascot, and it tells you how things are going.
+
+It pops out of its burrow in front of a sunrise. When every run passed, it squints happily. When something failed, it sinks lower and looks worried. While a run is live, it rocks back and forth digging. With nothing run yet, it's asleep in its hole. And while you type your password on the login screen, it squeezes its eyes shut.
+
+You'll find it on the Overview, on every run, on empty pages, in the top bar while a run is live, and on the health screen.
+
+## Safe with your credentials
+
+Groundhog signs in through your app's own login API, so SSO-only login pages are fine. Your username and password stay in your own config. They never go to a model and never appear in a saved test, a screenshot or a page snapshot. Password fields are stripped before anything leaves the browser.
+
+The console needs a signed-in session for everything except the login page. Passwords are hashed, and there are 2 roles: admins manage users and delete things, members do the rest.
+
+## Try it
+
+You need Node 20+, [uv](https://docs.astral.sh/uv/), MongoDB (or Docker), a TypeSafe API key from [console.typesafe.ai](https://console.typesafe.ai) and an app to test.
 
 ```sh
 git clone <this repo> && cd groundhog
-./start.sh                     # creates .env, then tells you what to fill
-# fill in .env
-./start.sh                     # again, until every line is green
+./start.sh
 ```
 
-`start.sh` checks uv, Node and npm, `.env`, Mongo at `MONGO_URL`, Chromium
-and the web dependencies, installing what it can. When Mongo is not reachable
-and Docker is, it offers to start a `mongo:7` container. Then it seeds the
-database, builds the console and serves it at http://localhost:8000. The
-first seed creates the admin from `ADMIN_EMAIL` and, when `ADMIN_PASSWORD` is
-empty, prints a generated password once. Keep it.
+The script checks everything, tells you what's missing, and opens the console at http://localhost:8000. Fill in `.env` with your app's URL and a test login, run it again, and write your first test.
 
-`./start.sh --dev` also runs the Vite dev server on port 5173, with hot reload.
-`./start.sh --check` runs every check and stops before starting anything.
-`--yes` answers the Docker prompt, `--port` moves the console off 8000.
-
-The CLI is the second way in, and the same engine. Every command below works
-without the console running:
-
-```sh
-uv run groundhog init          # checks env vars, Chromium, the app, Jev, Mongo and the login
-uv run groundhog db seed       # creates the indexes and the first admin
-uv run groundhog new "create an SMS template named {{name}} and verify it appears in the templates list" \
-  --name my-first-case --var name=gh-1 --start /:ws/templates
-uv run groundhog run my-first-case --var name=gh-2   # static, zero AI
-uv run groundhog serve --port 8000                   # the console and its API
-```
-
-groundhog logs in through the app's own login API, called from inside the
-browser session, so no login page is driven and it works even when the login
-page only offers SSO buttons. Your credentials live in `.env` and never reach a
-model, a snapshot or a case file. The session is cached under `.auth/`, so the
-login replays only when it expires.
-
-## Console
-
-The console is the same data as the CLI, on 5 screens:
-
-- **Overview** answers whether the latest runs passed: today's counts and the last 6 runs.
-- **Cases** lists every case with its steps, runs and heals; authors a new one from English.
-- **Flows** lists the chains and builds or composes a new one.
-- **Runs** is every run, filtered by kind, status and target.
-- **Settings** shows the `init` checks, the users and the version.
-
-A run streams live. Each step lands as it happens, coloured by mode, with a
-screenshot per step. A run started from the terminal is a run document like
-any other, so it shows up in the console too, live.
-
-Cases and flows are stored in Mongo. Download on a case page exports a case
-as JSON, and Edit JSON on the same page takes it back.
-
-Every API route needs a signed-in session, except login and health. The
-session is an HttpOnly cookie, passwords are hashed with scrypt, and there are
-2 roles: admin and member. Only an admin deletes things or manages users.
-
-## How it decides
-
-Authoring runs a loop. Each turn, groundhog reads the live page into an
-element table: every visible, enabled, interactive element, numbered, with
-its role, label, current value and state. Password fields are excluded before
-anything leaves the browser.
-
-That table goes to [Jev](https://docs.typesafe.ai), a System One model that
-answers typed questions with probabilities instead of prose. One request asks
-which operation comes next and which numbered element it acts on. Jev picks
-an index. It never writes a selector.
-
-Code owns the selector. Groundhog takes the DOM node Jev picked and derives
-candidates from it in order of durability: `data-testid`, a stable `id`,
-`aria-label`, the accessible name, a placeholder, a scoped variant like
-`role=dialog >> role=button[name="Delete"]`. Each candidate is run against
-the live page and kept only if it resolves to exactly that node. The top 3
-survivors become the step's selector and its fallbacks.
-
-Replay is then free. The saved JSON is a list of selectors, values and
-post-conditions, checked directly.
-
-Two things still call AI after authoring: a step whose selector matches
-nothing asks Jev to pick the element it meant, and a plain-English assertion
-like "the template appears in the list" is judged by Jev against the final
-page. A green run of a case with no English assertions makes zero calls, and
-the run page says so.
-
-## Variables
-
-Every case has its own local vars. `{{name}}` in an intent becomes `--var
-name=gh-1` at run time, substituted into values, assertions and selectors.
-Same case, different data, every run.
-
-The agent types real values while authoring, because validated form fields
-reject braces, and the saved case is re-parameterized back into `{{var}}`
-form automatically.
-
-## Chain cases into flows
-
-One case tests one thing. A flow chains saved cases into a longer story:
-create a template, create an event that uses it, delete both. One browser
-session, one login, one shared set of `{{var}}` values.
-
-```sh
-uv run groundhog flow new "create an SMS template, verify it shows up in search, then delete it"
-uv run groundhog flow run template-lifecycle
-uv run groundhog flow list
-```
-
-`flow new` splits the description into case-sized steps, replays the ones a
-saved case already covers, and authors the missing ones on the spot, in chain
-order against real app state. That's what lets the case that creates an event
-pick the template the chain just created. After that one pass, the flow and
-every case in it are saved, and `flow run` is static. It needs
-`ANTHROPIC_API_KEY`.
-
-When step 1 creates a template and step 3 searches for it, both need the same
-name. That's what a flow's `vars` block is: one shared namespace, set once,
-visible to every case in the chain. A case can override a shared var just for
-itself:
-
-```json
-{"case": "search-templates", "vars": {"query": "{{name}}"}}
-```
-
-Cleanup is part of the contract. Cases under `cleanup` run even when the
-chain fails, and a flow only passes if cleanup passes too. Shared vars
-default to per-run values like `gh-{{stamp}}`, so 2 runs never collide over
-leftover data.
-
-A flow document is small:
-
-```json
-{"name": "template-lifecycle",
- "vars": {"name": "gh-{{stamp}}"},
- "chain": ["create-sms-template", {"case": "search-templates", "vars": {"query": "{{name}}"}}],
- "cleanup": ["delete-sms-template"]}
-```
-
-## How a run works
-
-1. **Static replay.** Each step checks for page drift, tries its selector,
-   then its fallbacks, all without AI. A step's `expects` post-condition
-   verifies it actually worked, so a "successful" click that changed nothing
-   counts as a failure.
-2. **Heal on failure only.** Jev picks the element the step meant. The heal
-   is refused when the probability is low, when the frame doesn't match, or
-   when a Delete step would become a Cancel. It's persisted only if the whole
-   run passes, and the heal history stays in the case as a flakiness signal.
-3. **Assertions.** Deterministic ones (`url_contains:…`, `text_visible:…`)
-   are checked directly. English ones are judged by Jev with a probability.
-
-Every run is a document in Mongo with per-step mode (`static` / `fallback` /
-`healed` / `failed`) and which AI calls ran, shown on the console's run page.
-`groundhog run` ends by printing `run <id>`.
-
-## Configuration
-
-`.env` holds 5 required values, 3 for the console and 1 optional key.
-
-| Env var | Used for |
-|---|---|
-| `BASE_URL` | the app under test, e.g. `https://app.example.com` |
-| `LOGIN_USER` | login email |
-| `LOGIN_PASS` | login password |
-| `LOGIN_WORKSPACE` | workspace to select after login |
-| `TYPESAFE_API_KEY` | Jev, needed by `new`, heal and English assertions |
-| `MONGO_URL` | the console's database, default `mongodb://localhost:27017/groundhog` |
-| `ADMIN_EMAIL` | the first admin, created by `groundhog db seed` when there are no users |
-| `ADMIN_PASSWORD` | that admin's password; empty generates one and prints it once |
-| `ANTHROPIC_API_KEY` | optional: `flow new`, and field values the intent doesn't spell out |
-
-Timeouts, action budgets, probability thresholds and model names are plain
-constants in `groundhog/config.py`, each overridable by an env var of the
-same name.
-
-## Layout
-
-```
-groundhog/               Python package: engine, worker CLI, API
-  cli.py                 init · new · run · list · show · flow new|run|list · db seed · serve
-  config.py              env, budgets, paths, MONGO_URL
-  db.py                  Mongo client, collections, indexes
-  events.py              every run event: a console line and the run document
-  setup_checks.py        readiness checks shared by init and the Settings screen
-  jev.py                 TypeSafe client, the questions, usage counter
-  browser/               session+login · DOM snapshot+selectors · step execution
-  agent/                 authoring loop · flow composer · optional text helper
-  llm/client.py          Anthropic wrapper, used only for text
-  cases/ runner/         case schema+store · replay orchestration
-  api/                   FastAPI: auth, passwords, jobs, one router per resource
-web/                     the console: Vite, React, TypeScript
-start.sh                 checks every dependency, then starts the console
-```
+Prefer the terminal? The same engine has a CLI: `uv run groundhog --help`.
