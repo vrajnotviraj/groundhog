@@ -1,0 +1,35 @@
+/* Groundhog design tokens. See brand-guidelines.md. */
+:root {
+  /* colour */
+  --gh-ground: #E4E3DF;
+  --gh-surface: #D7D6D1;
+  --gh-surface-2: #CBC9C3;
+  --gh-lift: #F1F0EC;
+  --gh-muted: #4F453B;
+  --gh-burrow: #241911;
+  --gh-burrow-ink: #ECEBE7;
+  --gh-burrow-muted: #BCAFA1;
+  --gh-burrow-step: #382819;
+  --gh-accent: #F2A71B;
+  --gh-accent-soft: #F9D68A;
+  --gh-accent-ink: #241911;
+  --gh-pass: #1B6B3C;
+  --gh-fail: #A8231B;
+
+  /* mascot only, never interface */
+  --gh-fur: #A9713F;
+  --gh-fur-dark: #8A5A32;
+  --gh-belly: #D9A876;
+  --gh-cheek: #E8927C;
+  --gh-earth: #5B3F27;
+
+  /* type */
+  --gh-font: "Outfit", system-ui, sans-serif;
+  --gh-code: "JetBrains Mono", ui-monospace, monospace;
+
+  /* shape and motion */
+  --gh-radius: 999px;
+  --gh-ease-pop: cubic-bezier(.34, 1.56, .64, 1);
+  --gh-pop: 750ms;
+  --gh-press: 150ms;
+}
