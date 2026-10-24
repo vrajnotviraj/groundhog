@@ -1,77 +1,74 @@
 # Groundhog brand guidelines
 
 Groundhog drives an app once, saves the run as plain selectors, and replays it
-free. The brand follows that: warm, quick, and exact about numbers.
+free. The brand is the run report: a board of tiles, each holding one thing,
+and numbers before words.
 
 Tokens live in `design-tokens.css`. The mascot lives in `groundhog.svg`.
 
 ## The idea
 
-One shape runs everything: the burrow, a circle. Pictures and mascot poses sit
-in circles, buttons are pills, list bullets are small amber circles, and the
-loader is the groundhog popping out of its hole.
+Every surface is a board. Tiles sit edge to edge on 8px gaps with 8px outer
+margins and no empty cells. A tile holds exactly one thing: a figure, a step, a
+selector, a sentence, a link, the groundhog. Nothing is ever two things. Where
+a designer would reach for a card, a divider or a hero image, there is a tile.
 
 ## Colour
 
-Grey ground, burrow-dark ink, one amber accent.
+Bone ground, chocolate ink, one green.
 
 | Token | Value | Use |
 | --- | --- | --- |
-| `--gh-ground` | `#E4E3DF` | Most of every page |
-| `--gh-surface`, `--gh-surface-2` | `#D7D6D1`, `#CBC9C3` | A tone step instead of a border |
-| `--gh-muted` | `#4F453B` | Secondary notes, never running text |
-| `--gh-burrow` | `#241911` | Ink, and the one dark field per page |
-| `--gh-accent` | `#F2A71B` | The action and the mascot's circle |
-| `--gh-pass`, `--gh-fail` | `#1B6B3C`, `#A8231B` | Results only. Fixed, never re-themed |
+| `--gh-ground` | `#E5E1D8` | The page, seen only in the gaps |
+| `--gh-surface`, `--gh-surface-2` | `#DAD5CA`, `#B8AD9E` | Most tiles. Neighbours differ in tone, never by a line |
+| `--gh-muted` | `#61524A` | Secondary notes, and the third dark tile tone |
+| `--gh-ink` | `#2A1D17` | Text, the name band, the groundhog's tile |
+| `--gh-accent` | `#3D6433` | The action, and a green run. Pass green is the accent |
+| `--gh-fail` | `#A8231B` | A failed run. The only colour outside the palette |
 
-Rough proportions: ground 58, surface 20, burrow 14, amber 8. Fur, belly, paws
-and cheek colours belong to the mascot and never colour interface.
+Rough proportions on a screen: surfaces 55, ink 25, ground 10 (the gaps),
+green 5. Fail red appears only when something failed. Text on a dark tile is
+`--gh-ink-text`.
 
 ## Type
 
-Outfit for everything. Five sizes: hero (48 to 108px, tracking -0.04em),
-section heading (36 to 72px), statement (22 to 32px, medium), body (18px,
-full ink), small (15px). JetBrains Mono appears only for code: selectors,
+Albert Sans for everything. 600 for display and headings, 400 for text, 500
+for emphasis. Five sizes: display (64 to 128px, tracking -0.04em, leading 0.9),
+heading (40px, tracking -0.035em), lead (22px), body (17px, full ink), small
+(15px). Tabular figures wherever numbers align. The name is always lowercase
+`groundhog` in the display weight; the name band sets it at 220px, cropped by
+the tile at both ends. JetBrains Mono appears only for code: selectors,
 commands and terminal output.
 
 ## Shape
 
-Pills and circles only. Surfaces separate by tone step, not by lines or
-shadows. No gradients.
+Tiles. One 4px radius, filled, never outlined, never shadowed. A button is a
+tile too: the whole tile is the link, label bottom-left. No circles, no pills,
+no gradients, no lines.
 
 ## Motion
 
 Transform and opacity only, and everything stops under
 `prefers-reduced-motion`.
 
-- Pop, 750ms: rises from the hole with an overshoot. Plays on load, hover and tap.
-- Blink every few seconds, pupils drift left then right.
-- Ear twitch about every 6 seconds, each ear on its own offset.
-- Pose props loop over 1 to 3 seconds: floating Zs, sweat drop, check pulse, magnifier sweep, swaying sign.
-- Buttons, 150ms: 105% on hover, 96% on press, same overshoot curve.
+- The name band is a marquee: `groundhog` repeats and travels edge to edge at a
+  constant speed, 40s a loop, paused on hover.
+- Tiles enter once, staggered 60ms apart, rising 16px with opacity.
+- Buttons, 150ms: the tile darkens one tone on hover and presses to 98%.
+- Tiles never lift.
 
 ## The mascot
 
-Eight poses, each rising from the bottom edge of a circle.
+One figure, drawn from the palette: fur `--gh-fur`, ears and paws
+`--gh-fur-dark`, belly and muzzle `--gh-belly`, eyes and nose `--gh-ink`,
+teeth and eye lights `--gh-teeth`.
 
-| Pose | Use |
-| --- | --- |
-| Peek | Greetings: landing page, README header |
-| Wake | First launch and onboarding |
-| Sleep | Empty states and idle queues |
-| Search | Authoring and loading |
-| Pass | A green run |
-| Zero | A green run with no AI calls |
-| Heal | A selector was repaired |
-| Fail | A failing assertion |
-
-Rules:
-
-1. One pose per screen.
-2. Always inside a circle.
-3. Nothing sits on top of the mascot, and it never sits on text.
-4. Never celebrate a failure. The fail pose is small, in a corner, next to the cause.
-5. Results lead with numbers: steps, seconds, AI calls. The mascot lives in headers and empty states.
+1. Always on an ink tile, enlarged, cropped by two edges. Never whole, never in
+   a circle.
+2. One groundhog per screen, in a header or an empty state.
+3. Results lead with numbers and tile colour. The groundhog never celebrates
+   and never mourns; a green or red tile does that.
+4. Nothing sits on the groundhog, and it never sits on text.
 
 ## Voice
 

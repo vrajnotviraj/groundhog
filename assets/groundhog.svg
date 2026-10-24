@@ -1,54 +1,29 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
-  <!-- groundhog mascot: pops out of its burrow, sees the same test, replays it -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 400" width="320" height="400">
+  <!-- groundhog mascot tile: on ink, enlarged, cropped by the right and bottom edges, never whole -->
   <defs>
-    <clipPath id="burrow-clip">
-      <rect x="0" y="0" width="256" height="196"/>
-    </clipPath>
+    <clipPath id="tile"><rect width="320" height="400" rx="6"/></clipPath>
   </defs>
-
-  <!-- burrow mound -->
-  <ellipse cx="128" cy="208" rx="92" ry="26" fill="#7A5230"/>
-  <ellipse cx="128" cy="204" rx="78" ry="18" fill="#3E2A18"/>
-
-  <g clip-path="url(#burrow-clip)">
-    <!-- body -->
-    <rect x="76" y="120" width="104" height="110" rx="50" fill="#A9713F"/>
-    <!-- belly -->
-    <ellipse cx="128" cy="196" rx="34" ry="42" fill="#D9A876"/>
-
-    <!-- ears -->
-    <circle cx="88" cy="72" r="14" fill="#A9713F"/>
-    <circle cx="168" cy="72" r="14" fill="#A9713F"/>
-    <circle cx="88" cy="74" r="7" fill="#7A5230"/>
-    <circle cx="168" cy="74" r="7" fill="#7A5230"/>
-
-    <!-- head -->
-    <circle cx="128" cy="98" r="46" fill="#A9713F"/>
-
-    <!-- cheeks -->
-    <ellipse cx="97" cy="110" rx="9" ry="6" fill="#E8927C" opacity="0.65"/>
-    <ellipse cx="159" cy="110" rx="9" ry="6" fill="#E8927C" opacity="0.65"/>
-
-    <!-- eyes -->
-    <circle cx="111" cy="92" r="6.5" fill="#2B1B10"/>
-    <circle cx="145" cy="92" r="6.5" fill="#2B1B10"/>
-    <circle cx="113.5" cy="89.5" r="2.2" fill="#FFFFFF"/>
-    <circle cx="147.5" cy="89.5" r="2.2" fill="#FFFFFF"/>
-
-    <!-- muzzle -->
-    <ellipse cx="128" cy="112" rx="17" ry="13" fill="#D9A876"/>
-    <ellipse cx="128" cy="105" rx="6" ry="4.5" fill="#3E2A18"/>
-
-    <!-- buck teeth -->
-    <rect x="121" y="112" width="7" height="10" rx="2.5" fill="#FFFFFF"/>
-    <rect x="128.5" y="112" width="7" height="10" rx="2.5" fill="#FFFFFF"/>
-
-    <!-- paws on the burrow rim -->
-    <ellipse cx="94" cy="176" rx="13" ry="10" fill="#8A5A32"/>
-    <ellipse cx="162" cy="176" rx="13" ry="10" fill="#8A5A32"/>
+  <rect width="320" height="400" rx="6" fill="#2A1D17"/>
+  <g clip-path="url(#tile)">
+    <g transform="translate(-200 10) scale(3.2)">
+      <!-- body and belly -->
+      <path d="M60 160V138a60 54 0 0 1 120 0v22z" fill="#B8AD9E"/>
+      <path d="M84 160a36 38 0 0 1 72 0z" fill="#DAD5CA"/>
+      <!-- ears -->
+      <circle cx="86" cy="40" r="13" fill="#B8AD9E"/><circle cx="154" cy="40" r="13" fill="#B8AD9E"/>
+      <circle cx="86" cy="42" r="6" fill="#DAD5CA"/><circle cx="154" cy="42" r="6" fill="#DAD5CA"/>
+      <!-- head and muzzle -->
+      <circle cx="120" cy="82" r="48" fill="#B8AD9E"/>
+      <ellipse cx="120" cy="104" rx="20" ry="14" fill="#DAD5CA"/>
+      <!-- eyes -->
+      <circle cx="101" cy="80" r="8" fill="#2A1D17"/><circle cx="139" cy="80" r="8" fill="#2A1D17"/>
+      <circle cx="104" cy="77" r="2.6" fill="#FFFFFF"/><circle cx="142" cy="77" r="2.6" fill="#FFFFFF"/>
+      <!-- nose, smile, buck teeth -->
+      <ellipse cx="120" cy="97" rx="6" ry="4" fill="#2A1D17"/>
+      <path d="M113 103q7 6 14 0" fill="none" stroke="#2A1D17" stroke-width="2.5" stroke-linecap="round"/>
+      <rect x="113" y="104" width="6.5" height="11" rx="2" fill="#FFFFFF"/><rect x="120.5" y="104" width="6.5" height="11" rx="2" fill="#FFFFFF"/>
+      <!-- paws on the rim -->
+      <rect x="72" y="146" width="30" height="14" rx="7" fill="#61524A"/><rect x="138" y="146" width="30" height="14" rx="7" fill="#61524A"/>
+    </g>
   </g>
-
-  <!-- grass tufts -->
-  <path d="M40 206 q3 -12 6 0 q3 -10 6 0" stroke="#5F8F3E" stroke-width="3" fill="none" stroke-linecap="round"/>
-  <path d="M204 206 q3 -12 6 0 q3 -10 6 0" stroke="#5F8F3E" stroke-width="3" fill="none" stroke-linecap="round"/>
 </svg>
