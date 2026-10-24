@@ -1,11 +1,80 @@
+# --- Secrets and local config ---
 .env
-.venv/
+.env.*
+!.env.example
+.envrc
 .auth/
-__pycache__/
-*.pyc
+.pypirc
+
+# --- Groundhog output ---
 runs/
 neo4j-data/
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# --- Virtual environments ---
+.venv/
+venv/
+env/
+ENV/
+
+# --- Packaging and build ---
+build/
+dist/
+wheels/
+*.egg-info/
+*.egg
+.eggs/
+MANIFEST
+pip-log.txt
+
+# --- Tests, coverage and caches ---
 .pytest_cache/
+.hypothesis/
+.tox/
+.nox/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+.mypy_cache/
+.dmypy.json
+.pyre/
+.pytype/
+.ruff_cache/
+.cache
+*.log
+
+# --- Jupyter ---
+.ipynb_checkpoints/
+
+# --- Editors and OS ---
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store
+Thumbs.db
+
+# --- AI tooling ---
+.claude/
+.agents/
+.taste-skill/
+.cursor/
+.aider*
+.continue/
+.windsurf/
+.codex/
+.gemini/
+skills-lock.json
+*.local.md
+
+# --- Private working docs ---
 .docs/
 docs/
 CLAUDE.md
