@@ -46,19 +46,29 @@ Like the movie. It wakes up, lives the same day again, and gets a little better 
 
 ## The console
 
-Everything lives in a web console your whole team can sign into. A run you start from the terminal shows up there too, live.
+Everything lives in a web console your whole team can sign into.
+
+![The Overview: today's verdict, the groundhog and the latest runs](assets/screens/overview.png)
 
 **Overview.** Opens with the day's verdict in big type: "All 10 runs passed" or "1 of 10 failed today". A strip of today's runs sits under it, one square per run in green or red, and the latest runs are listed below.
 
 **Cases.** Every test with its steps, its last run and a yellow tag when it has healed. Search by name or intent, run any test in 1 click, or write a new one from a sentence.
 
+![Cases: every test, its steps, heals and last run](assets/screens/cases.png)
+
 **Flows.** Build a chain from your saved tests, set shared variables and cleanup, or describe a new flow in English.
 
+![A flow: the chain, its cleanup and shared variables](assets/screens/flow.png)
+
 **Run.** Watch a test as it happens. Each step lands as a tile coloured by how it ran (replayed, used a fallback, healed or failed), with a screenshot of the page after each step. Click a tile to jump to that step. When the run ends you see every assertion, its reasoning and what it cost.
+
+![A run: each step as a tile, the log and a screenshot per step](assets/screens/run.png)
 
 **Runs.** The full history, filtered by kind, status or test name.
 
 **Settings.** A health check for everything groundhog needs (the app, the login, the database, the AI service), plus users and roles.
+
+![Settings: every check groundhog needs, green](assets/screens/settings.png)
 
 ### Meet the groundhog
 
@@ -67,6 +77,8 @@ The console has a mascot, and it tells you how things are going.
 It pops out of its burrow in front of a sunrise. When every run passed, it squints happily. When something failed, it sinks lower and looks worried. While a run is live, it rocks back and forth digging. With nothing run yet, it's asleep in its hole. And while you type your password on the login screen, it squeezes its eyes shut.
 
 You'll find it on the Overview, on every run, on empty pages, in the top bar while a run is live, and on the health screen.
+
+![The login screen, the groundhog watching your cursor](assets/screens/login.png)
 
 ## Safe with your credentials
 
@@ -84,5 +96,3 @@ git clone <this repo> && cd groundhog
 ```
 
 The script checks everything, tells you what's missing, and opens the console at http://localhost:8000. Fill in `.env` with your app's URL and a test login, run it again, and write your first test.
-
-Prefer the terminal? The same engine has a CLI: `uv run groundhog --help`.
