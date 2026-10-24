@@ -26,25 +26,38 @@ it.
 
 ## Quick start
 
-You need [uv](https://docs.astral.sh/uv/), a TypeSafe API key from
+You need [uv](https://docs.astral.sh/uv/), Node 20 or later, MongoDB (or
+Docker to run one), a TypeSafe API key from
 [console.typesafe.ai](https://console.typesafe.ai), and an app to test.
 
 ```sh
 git clone <this repo> && cd groundhog
-uv sync && uv run playwright install chromium
-uv run groundhog init          # creates .env, then tells you what's missing
+./start.sh                     # creates .env, then tells you what to fill
 # fill in .env
-uv run groundhog init          # again, until every line is green
+./start.sh                     # again, until every line is green
 ```
 
-`init` checks your env vars, Chromium, the app URL, the Jev API and the login
-itself, and each failing line says what to do about it. Then author and
-replay:
+`start.sh` checks uv, Node and npm, `.env`, Mongo at `MONGO_URL`, Chromium
+and the web dependencies, installing what it can. When Mongo is not reachable
+and Docker is, it offers to start a `mongo:7` container. Then it seeds the
+database, builds the console and serves it at http://localhost:8000. The
+first seed creates the admin from `ADMIN_EMAIL` and, when `ADMIN_PASSWORD` is
+empty, prints a generated password once. Keep it.
+
+`./start.sh --dev` also runs the Vite dev server on port 5173, with hot reload.
+`./start.sh --check` runs every check and stops before starting anything.
+`--yes` answers the Docker prompt, `--port` moves the console off 8000.
+
+The CLI is the second way in, and the same engine. Every command below works
+without the console running:
 
 ```sh
+uv run groundhog init          # checks env vars, Chromium, the app, Jev, Mongo and the login
+uv run groundhog db seed       # creates the indexes and the first admin
 uv run groundhog new "create an SMS template named {{name}} and verify it appears in the templates list" \
   --name my-first-case --var name=gh-1 --start /:ws/templates
 uv run groundhog run my-first-case --var name=gh-2   # static, zero AI
+uv run groundhog serve --port 8000                   # the console and its API
 ```
 
 groundhog logs in through the app's own login API, called from inside the
@@ -52,6 +65,27 @@ browser session, so no login page is driven and it works even when the login
 page only offers SSO buttons. Your credentials live in `.env` and never reach a
 model, a snapshot or a case file. The session is cached under `.auth/`, so the
 login replays only when it expires.
+
+## Console
+
+The console is the same data as the CLI, on 5 screens:
+
+- **Overview** answers whether the latest runs passed: today's counts and the last 6 runs.
+- **Cases** lists every case with its steps, runs and heals; authors a new one from English.
+- **Flows** lists the chains and builds or composes a new one.
+- **Runs** is every run, filtered by kind, status and target.
+- **Settings** shows the `init` checks, the users and the version.
+
+A run streams live. Each step lands as it happens, coloured by mode, with a
+screenshot per step. A run started from the terminal is a run document like
+any other, so it shows up in the console too, live.
+
+Cases and flows are stored in Mongo. Download on a case page exports a case
+as JSON, and Edit JSON on the same page takes it back.
+
+Every API route needs a signed-in session, except login and health. The
+session is an HttpOnly cookie, passwords are hashed with scrypt, and there are
+2 roles: admin and member. Only an admin deletes things or manages users.
 
 ## How it decides
 
@@ -79,7 +113,7 @@ Two things still call AI after authoring: a step whose selector matches
 nothing asks Jev to pick the element it meant, and a plain-English assertion
 like "the template appears in the list" is judged by Jev against the final
 page. A green run of a case with no English assertions makes zero calls, and
-the report says so.
+the run page says so.
 
 ## Variables
 
@@ -124,7 +158,7 @@ chain fails, and a flow only passes if cleanup passes too. Shared vars
 default to per-run values like `gh-{{stamp}}`, so 2 runs never collide over
 leftover data.
 
-A flow file is small enough to write by hand:
+A flow document is small:
 
 ```json
 {"name": "template-lifecycle",
@@ -146,12 +180,13 @@ A flow file is small enough to write by hand:
 3. **Assertions.** Deterministic ones (`url_contains:…`, `text_visible:…`)
    are checked directly. English ones are judged by Jev with a probability.
 
-Every run writes a markdown and JSON report to `runs/` with per-step mode
-(`static` / `fallback` / `healed` / `failed`) and which AI calls ran.
+Every run is a document in Mongo with per-step mode (`static` / `fallback` /
+`healed` / `failed`) and which AI calls ran, shown on the console's run page.
+`groundhog run` ends by printing `run <id>`.
 
 ## Configuration
 
-`.env` holds 5 required values plus 1 optional one.
+`.env` holds 5 required values, 3 for the console and 1 optional key.
 
 | Env var | Used for |
 |---|---|
@@ -160,6 +195,9 @@ Every run writes a markdown and JSON report to `runs/` with per-step mode
 | `LOGIN_PASS` | login password |
 | `LOGIN_WORKSPACE` | workspace to select after login |
 | `TYPESAFE_API_KEY` | Jev, needed by `new`, heal and English assertions |
+| `MONGO_URL` | the console's database, default `mongodb://localhost:27017/groundhog` |
+| `ADMIN_EMAIL` | the first admin, created by `groundhog db seed` when there are no users |
+| `ADMIN_PASSWORD` | that admin's password; empty generates one and prints it once |
 | `ANTHROPIC_API_KEY` | optional: `flow new`, and field values the intent doesn't spell out |
 
 Timeouts, action budgets, probability thresholds and model names are plain
@@ -169,15 +207,19 @@ same name.
 ## Layout
 
 ```
-groundhog/
-  cli.py                 init · new · run · list · show · flow new|run|list
-  config.py              env, budgets, paths
+groundhog/               Python package: engine, worker CLI, API
+  cli.py                 init · new · run · list · show · flow new|run|list · db seed · serve
+  config.py              env, budgets, paths, MONGO_URL
+  db.py                  Mongo client, collections, indexes
+  events.py              every run event: a console line and the run document
+  checks.py              readiness checks shared by init and the Settings screen
+  passwords.py           scrypt hash and verify
   jev.py                 TypeSafe client, the questions, usage counter
   browser/               session+login · DOM snapshot+selectors · step execution
   agent/                 authoring loop · flow composer · optional text helper
   llm/client.py          Anthropic wrapper, used only for text
-  cases/ runner/         case schema+store · replay orchestration · reports
-cases/                   saved test cases (JSON, edit freely)
-flows/                   saved flows: chains of cases (JSON, edit freely)
-runs/                    run reports
+  cases/ runner/         case schema+store · replay orchestration
+  api/                   FastAPI: auth, jobs, one router per resource
+web/                     the console: Vite, React, TypeScript
+start.sh                 checks every dependency, then starts the console
 ```

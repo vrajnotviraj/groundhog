@@ -26,5 +26,5 @@
   --gh-radius: 4px;
   --gh-gap: 8px;
   --gh-marquee: 40s;
-  --gh-press: 150ms;
+  --gh-motion: 150ms;
 }
