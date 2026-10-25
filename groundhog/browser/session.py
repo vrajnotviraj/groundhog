@@ -14,7 +14,7 @@ from urllib.parse import urlsplit
 from playwright.sync_api import Page, sync_playwright
 
 from groundhog import config
-from groundhog.browser.actions import settle
+from groundhog.browser.actions import recover_workspace, settle
 
 STATE = config.AUTH_DIR / "state.json"
 
@@ -112,13 +112,9 @@ class Session:
         clicked = False
         deadline = time.monotonic() + config.STEP_TIMEOUT_MS / 1000
         while time.monotonic() < deadline:
-            path = self._path()
-            if config.WS_ID.search(path):
+            if config.WS_ID.search(self._path()):
                 return
-            if "/workspaces" in path and config.LOGIN_WORKSPACE and not clicked:
-                self.page.get_by_role("link", name=config.LOGIN_WORKSPACE).first.click(
-                    timeout=config.STEP_TIMEOUT_MS)
-                settle(self.page)
+            if not clicked and recover_workspace(self.page):
                 clicked = True
             else:
                 self.page.wait_for_timeout(250)

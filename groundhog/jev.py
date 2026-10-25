@@ -5,9 +5,11 @@ The model never emits a selector; it picks an index, and code turns that index i
 
 from __future__ import annotations
 
+import gzip
+import json
 import math
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 import httpx
@@ -72,6 +74,8 @@ If no element clearly matches, choose none."""
 JUDGE_QUESTION = ("Is `outcome` visibly true on the current page? `goal` is context for what the outcome refers to. "
                   "When `outcome` says something is absent, gone, deleted or no longer shown, answer yes if the page "
                   "does not show it anywhere.")
+# The same question asked inside choose(), whose state also carries the action history.
+FOLDED_QUESTION = JUDGE_QUESTION + " Judge only from `page` and `elements`; `recent_actions` are not evidence."
 JUDGE_CRITERIA = {
     "true": "The page URL, visible text or elements show `outcome` as stated. For an absence outcome: the named "
             "thing is nowhere on the page.",
@@ -91,6 +95,7 @@ OPS = {
 }
 
 _USAGE = {"calls": 0, "input_tokens": 0, "latency_ms": 0, "model": None}
+_client = httpx.Client(timeout=25)  # one pooled connection for every call
 
 
 @dataclass
@@ -102,6 +107,7 @@ class Decision:
     latency_ms: int
     detail: str = ""  # runner-up operations and targets, for the decision line when p is low
     wanted: str = ""  # on NONE: the operation whose target head found nothing fitting
+    outcomes: list[float] = field(default_factory=list)  # per outcome; set on DONE, WAIT, BLOCKED and NONE
 
 
 def _headers() -> dict:
@@ -118,10 +124,11 @@ def _raise_for(response) -> None:
 
 
 def _post(body: dict) -> dict:
-    headers = _headers()
+    headers = {**_headers(), "Content-Encoding": "gzip", "Content-Type": "application/json"}
+    content = gzip.compress(json.dumps(body).encode())
     for attempt in range(3):
         try:
-            response = httpx.post(SYSTEMONE_URL, json=body, headers=headers, timeout=25)
+            response = _client.post(SYSTEMONE_URL, content=content, headers=headers)
         except httpx.HTTPError as e:
             raise RuntimeError(f"Jev request failed: {e}") from None
         if response.status_code in (429, 503, 529) and attempt < 2:
@@ -204,7 +211,18 @@ def _pick(answer: dict, elements: list):
     return next(el for el in elements if el.id == choice), probability
 
 
-def choose(snap: Snapshot, goal: str, history: list[dict], exclude=frozenset()) -> Decision:
+def _outcome_heads(outcomes: list[str], goal: str, question: str) -> dict:
+    return {f"outcome_{i}": {"type": "noul", "criteria": JUDGE_CRITERIA,
+                             "instructions": {"goal": goal, "outcome": o, "question": question}}
+            for i, o in enumerate(outcomes, 1)}
+
+
+def _nouls(answers: dict, heads: dict) -> list[float]:
+    return [_validate_noul(answers.get(k) or {}) for k in heads]
+
+
+def choose(snap: Snapshot, goal: str, history: list[dict], exclude=frozenset(),
+           outcomes: list[str] = ()) -> Decision:
     rows = [el for el in snap.elements if (el.frame, el.node) not in exclude]
     elements = [el for el in rows if el.state.get("disabled") != "true"]  # disabled: shown, never targeted
     fills = [el for el in elements if el.kind == "fill"]
@@ -226,24 +244,31 @@ def choose(snap: Snapshot, goal: str, history: list[dict], exclude=frozenset()) 
         questions["type_target"] = {"type": "choice", "criteria": _criteria(fills),
                                     "instructions": {"goal": goal, "operation": "TYPE",
                                                      "rules": [NEXT_ACTION, TARGET]}}
+    heads = _outcome_heads(outcomes, goal, FOLDED_QUESTION)
+    questions.update(heads)
     state = {"page": {"url": snap.url, "title": snap.title, "text": snap.text},
              "elements": _rows(rows), "recent_actions": history[-10:]}
     answers, ms = _ask(state, questions)
     operation = _validate_choice(answers.get("operation") or {}, operations)
     chosen = operation["choice"]
-    # Unused heads cannot cause an action, so only the head the operation selects is validated.
+    # Unused heads cannot cause an action, so only the heads the operation uses are validated.
     head = {"CLICK": "target", "HOVER": "target", "TYPE": "type_target"}.get(chosen)
     detail = "ops " + _top(operation)
     if head not in questions:
-        return Decision(chosen, None, operation["confidence"], operation["probabilities"][chosen], ms, detail)
+        judged = _nouls(answers, heads) if chosen in ("DONE", "WAIT", "BLOCKED") else []
+        return Decision(chosen, None, operation["confidence"], operation["probabilities"][chosen], ms, detail,
+                        outcomes=judged)
     offered = fills if head == "type_target" else elements
     answer = _validate_choice(answers.get(head) or {}, questions[head]["criteria"])
     el, probability = _pick(answer, offered)
     return Decision(chosen if el else "NONE", el, operation["confidence"], probability, ms,
-                    f"{detail} · {head} {_top(answer)}", wanted="" if el else chosen)
+                    f"{detail} · {head} {_top(answer)}", wanted="" if el else chosen,
+                    outcomes=[] if el else _nouls(answers, heads))
 
 
 def value(snap: Snapshot, goal: str, field: Element, candidates: list[dict], history: list[dict]) -> str | None:
+    if not candidates:
+        return None  # compose is the only option
     criteria = {str(i + 1): c for i, c in enumerate(candidates)}
     criteria["compose"] = COMPOSE
     described = {"label": field.label, "role": field.role,
@@ -257,17 +282,20 @@ def value(snap: Snapshot, goal: str, field: Element, candidates: list[dict], his
     return None if choice == "compose" else candidates[int(choice) - 1]["value"]
 
 
-def judge(snap: Snapshot, outcome: str, goal: str) -> float:
+def judge(snap: Snapshot, outcomes: list[str], goal: str) -> list[float]:
+    """One probability per outcome, all asked in one request."""
+    if not outcomes:
+        return []
     state = {"page": {"url": snap.url, "title": snap.title, "text": snap.text},
              "elements": [f"{el.role} · {el.label}" for el in snap.elements[:150]]}
-    questions = {"outcome": {"type": "noul", "criteria": JUDGE_CRITERIA,
-                             "instructions": {"goal": goal, "outcome": outcome, "question": JUDGE_QUESTION}}}
-    answers, _ = _ask(state, questions)
-    return _validate_noul(answers.get("outcome") or {})
+    heads = _outcome_heads(outcomes, goal, JUDGE_QUESTION)
+    answers, _ = _ask(state, heads)
+    return _nouls(answers, heads)
 
 
-def heal(snap: Snapshot, step: Step) -> tuple[Element | None, float]:
-    elements = [el for el in snap.elements if step.action != "fill" or el.kind == "fill"]
+def heal(snap: Snapshot, step: Step, elements: list[Element]) -> tuple[Element | None, float]:
+    """Pick the element `step` meant from `elements`, the rows the runner would accept."""
+    elements = [el for el in elements if step.action != "fill" or el.kind == "fill"]
     criteria = _criteria(elements)
     state = {"page": {"url": snap.url, "title": snap.title, "text": snap.text}, "elements": _rows(elements)}
     questions = {"heal": {"type": "choice", "criteria": criteria, "instructions": {
@@ -282,7 +310,7 @@ def ping() -> dict:
     headers = _headers()
     started = time.perf_counter()
     try:
-        response = httpx.get(MODELS_URL, headers=headers, timeout=8)
+        response = _client.get(MODELS_URL, headers=headers, timeout=8)
     except httpx.HTTPError as e:
         raise RuntimeError(f"Jev request failed: {e}") from None
     _raise_for(response)

@@ -1,8 +1,8 @@
 // One atomic DOM read per document: the indexed table of interactive elements
 // Jev chooses from, plus the visible text. Node identity lives in window.__gh so
 // Python can verify that a derived selector resolves to the very node that was
-// offered. Called as page.evaluate(JS).
-() => {
+// offered. Called as page.evaluate(JS, maxElements).
+(maxElements) => {
   if (!document.body) return {url: location.href, title: document.title, text: '',
     elements: [], omitted: 0};
 
@@ -123,8 +123,8 @@
     elements.push({node: identity(node), role: r, label: label || r, value: value.slice(0, 120),
       kind: editable ? 'fill' : 'click', attrs: attrsOf(node), state, scope: scopeOf(node)});
   }
-  const omitted = Math.max(0, elements.length - 250);
-  elements.splice(250);
+  const omitted = Math.max(0, elements.length - maxElements);
+  elements.splice(maxElements);
   for (const el of elements) el.label = el.label.slice(0, 80);
 
   // Toasts are transient; letting them into the text would make them post-conditions.

@@ -5,13 +5,20 @@ verified durable selector; the trace becomes a Case that later replays with zero
 """
 
 import re
-import time
 from datetime import datetime, timezone
 from urllib.parse import parse_qsl, urlsplit
 
 from groundhog import config, events, jev
 from groundhog.agent import text
-from groundhog.browser.actions import Ctx, goto_app, on_picker, perform, recover_workspace, resolve_path, settle
+from groundhog.browser.actions import (
+    Ctx,
+    goto_app,
+    on_picker,
+    perform,
+    recover_workspace,
+    resolve_path,
+    wait_for_change,
+)
 from groundhog.browser.session import Session
 from groundhog.browser.snapshot import observe, selectors_for
 from groundhog.cases.schema import Assertion, Case, Expect, Step
@@ -116,17 +123,6 @@ def _entry(op: str, action: str, value=None, page_changed=False, error=None) -> 
             "page_changed": page_changed, "error": error}
 
 
-def _observe_changed(page, before, timeout_ms: int = 2000):
-    """Post-action snapshot. Drawers and dialogs render after settle() returns, so
-    give the page a bounded moment to actually change before calling it a no-op."""
-    deadline = time.monotonic() + timeout_ms / 1000
-    while True:
-        after = observe(page)
-        if after.fingerprint != before.fingerprint or after.url != before.url or time.monotonic() > deadline:
-            return after
-        page.wait_for_timeout(250)
-
-
 def _emit_decision(d, detail: str | None = None) -> None:
     events.emit("decision", operation=d.operation, label=d.element.label if d.element else "",
                 probability=d.probability, confidence=d.confidence, latency_ms=d.latency_ms,
@@ -153,7 +149,7 @@ def run_executor(page, ctx: Ctx, goal: str, outcomes: list[str], candidates: lis
             recover_workspace(page)
         snap = observe(page)
         try:
-            d = jev.choose(snap, goal, history, exclude)
+            d = jev.choose(snap, goal, history, exclude, outcomes)
         except (RuntimeError, ValueError) as e:
             failures += 1
             history.append(_entry("NONE", "decision failed", error=str(e).splitlines()[0]))
@@ -162,15 +158,16 @@ def run_executor(page, ctx: Ctx, goal: str, outcomes: list[str], candidates: lis
 
         if d.operation in ("DONE", "WAIT", "NONE", "BLOCKED"):
             # Code owns the finish line: whenever Jev is unsure, check the goal's
-            # outcomes first. An app that already did the work must not be waited on.
+            # outcomes first (choose() judged them already). An app that already
+            # did the work must not be waited on.
+            ps = d.outcomes
             try:
-                ps = [jev.judge(snap, o, goal) for o in outcomes]
                 if ps and min(ps) < config.JUDGE_THRESHOLD and d.operation in ("DONE", "BLOCKED"):
                     # The last action's effect may still be landing (a delete, a save):
-                    # one short wait and a second look before giving up on it.
-                    page.wait_for_timeout(1500)
-                    settle(page)
-                    ps = [jev.judge(observe(page), o, goal) for o in outcomes]
+                    # look again once the page changes; an unchanged page keeps the verdict.
+                    after = wait_for_change(page, snap)
+                    if after.fingerprint != snap.fingerprint:
+                        ps = jev.judge(after, outcomes, goal)
             except (RuntimeError, ValueError) as e:
                 failures += 1
                 history.append(_entry("DONE", "DONE check failed", error=str(e).splitlines()[0]))
@@ -199,10 +196,8 @@ def run_executor(page, ctx: Ctx, goal: str, outcomes: list[str], candidates: lis
                 history.append(_entry("NONE", "no fitting target"))
                 continue
         if d.operation == "WAIT":
-            settle(page)
-            page.wait_for_timeout(1000)
             history.append(_entry("WAIT", "waited for the page to update"))
-            if observe(page).fingerprint == snap.fingerprint:
+            if wait_for_change(page, snap).fingerprint == snap.fingerprint:
                 waits += 1
                 if waits >= 3:  # nothing is loading; waiting longer only burns the budget
                     return trace, "blocked"
@@ -254,7 +249,7 @@ def run_executor(page, ctx: Ctx, goal: str, outcomes: list[str], candidates: lis
                     exclude.add((el.frame, el.node))
             continue
 
-        after = observe(page) if step.action == "fill" else _observe_changed(page, snap)
+        after = observe(page) if step.action == "fill" else wait_for_change(page, snap, 2000)
         changed = after.fingerprint != snap.fingerprint or after.url != snap.url
         expects = None if step.action == "fill" else derive_expects(snap, after, step)
         trace.append({"action": step.action, "selector": step.selector, "frame": step.frame,

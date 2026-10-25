@@ -168,6 +168,40 @@ def test_no_scroll_operations_are_offered(post):
     assert not [o for o in _ops(post) if o.startswith("SCROLL")]
 
 
+def test_choose_carries_one_outcome_head_per_clause_and_returns_them_on_done(post):
+    post.reply = _answers("DONE", outcome_1={"type": "noul", "noul": 0.8}, outcome_2={"type": "noul", "noul": 0.3})
+    d = jev.choose(_snap([_el("e1")]), "goal", [], outcomes=["a", "b"])
+    heads = post.bodies[0]["questions"]
+    assert heads["outcome_1"]["type"] == "noul" and heads["outcome_2"]["instructions"]["outcome"] == "b"
+    assert heads["outcome_1"]["instructions"]["question"] == jev.FOLDED_QUESTION
+    assert len(post.bodies) == 1 and d.outcomes == [pytest.approx(0.8), pytest.approx(0.3)]
+
+
+@pytest.mark.parametrize("operation", ["WAIT", "BLOCKED"])
+def test_choose_fills_outcomes_on_wait_and_blocked(post, operation):
+    post.reply = _answers(operation, outcome_1={"type": "noul", "noul": 0.4})
+    assert jev.choose(_snap([_el("e1")]), "goal", [], outcomes=["a"]).outcomes == [pytest.approx(0.4)]
+
+
+def test_choose_fills_outcomes_when_the_target_head_answers_none(post):
+    post.reply = _answers("CLICK", target=_choice("none", {"e1": 0.2, "none": 0.8}),
+                          outcome_1={"type": "noul", "noul": 0.7})
+    d = jev.choose(_snap([_el("e1")]), "goal", [], outcomes=["a"])
+    assert d.operation == "NONE" and d.outcomes == [pytest.approx(0.7)]
+
+
+def test_a_malformed_outcome_head_is_ignored_on_click(post):
+    post.reply = _answers("CLICK", target=_choice("e1", {"e1": 0.9, "none": 0.1}), outcome_1={"garbage": True})
+    d = jev.choose(_snap([_el("e1")]), "goal", [], outcomes=["a"])
+    assert d.operation == "CLICK" and d.outcomes == []
+
+
+def test_a_malformed_outcome_head_is_rejected_on_done(post):
+    post.reply = _answers("DONE", outcome_1={"type": "noul", "noul": 2})
+    with pytest.raises(ValueError, match="Invalid Jev response"):
+        jev.choose(_snap([_el("e1")]), "goal", [], outcomes=["a"])
+
+
 def test_choose_passes_the_last_ten_history_entries_untouched(post):
     history = [{"op": "CLICK", "action": f"click {i}", "value": None, "page_changed": True, "error": None}
                for i in range(12)]
@@ -195,26 +229,56 @@ def test_value_returns_none_for_compose(post):
     assert jev.value(_snap([field]), "goal", field, [{"value": "gh-1", "source": "x"}], []) is None
 
 
-def test_judge_returns_the_noul(post):
-    post.reply = _answers(outcome={"type": "noul", "noul": 0.91})
-    assert jev.judge(_snap([_el("e1")]), "the template appears", "goal") == pytest.approx(0.91)
-    assert post.bodies[0]["questions"]["outcome"]["type"] == "noul"
+def test_value_without_candidates_asks_nothing(post):
+    field = _el("e1", role="textbox", label="Body", kind="fill")
+    assert jev.value(_snap([field]), "goal", field, [], []) is None
+    assert post.bodies == []
+
+
+def test_judge_asks_every_outcome_in_one_request(post):
+    post.reply = _answers(outcome_1={"type": "noul", "noul": 0.91}, outcome_2={"type": "noul", "noul": 0.4})
+    assert jev.judge(_snap([_el("e1")]), ["appears", "is green"], "goal") == [pytest.approx(0.91),
+                                                                              pytest.approx(0.4)]
+    questions = post.bodies[0]["questions"]
+    assert len(post.bodies) == 1 and set(questions) == {"outcome_1", "outcome_2"}
+    assert questions["outcome_2"]["instructions"]["outcome"] == "is green"
+    assert questions["outcome_1"]["instructions"]["question"] == jev.JUDGE_QUESTION
     assert post.bodies[0]["state"]["elements"] == ["button · Create"]
+
+
+def test_judge_rejects_any_malformed_outcome(post):
+    post.reply = _answers(outcome_1={"type": "noul", "noul": 0.9}, outcome_2={"type": "noul"})
+    with pytest.raises(ValueError, match="Invalid Jev response"):
+        jev.judge(_snap([]), ["a", "b"], "goal")
+
+
+def test_judge_with_no_outcomes_asks_nothing(post):
+    assert jev.judge(_snap([]), [], "goal") == [] and post.bodies == []
 
 
 def test_heal_returns_none_and_its_probability(post):
     post.reply = _answers(heal=_choice("none", {"e1": 0.3, "none": 0.7}))
     step = SimpleNamespace(action="click", description="click button Delete", value=None, selector="#gone")
-    element, probability = jev.heal(_snap([_el("e1")]), step)
+    snap = _snap([_el("e1")])
+    element, probability = jev.heal(snap, step, snap.elements)
     assert element is None and probability == pytest.approx(0.7)
     assert post.bodies[0]["questions"]["heal"]["instructions"]["step"]["original_selector"] == "#gone"
+
+
+def test_heal_offers_only_the_elements_it_is_given(post):
+    snap = _snap([_el("e1", label="Cancel"), _el("e2", label="Delete")])
+    post.reply = _answers(heal=_choice("e2", {"e2": 0.9, "none": 0.1}))
+    step = SimpleNamespace(action="click", description="click button Delete", value=None, selector="#gone")
+    element, _ = jev.heal(snap, step, snap.elements[1:])
+    assert set(post.bodies[0]["questions"]["heal"]["criteria"]) == {"e2", "none"}
+    assert [r["index"] for r in post.bodies[0]["state"]["elements"]] == ["e2"] and element.id == "e2"
 
 
 def test_heal_offers_only_fill_elements_for_a_fill_step(post):
     snap = _snap([_el("e1"), _el("e2", role="textbox", label="Name", kind="fill")])
     post.reply = _answers(heal=_choice("e2", {"e2": 0.8, "none": 0.2}))
     step = SimpleNamespace(action="fill", description="fill textbox Name", value="gh-1", selector="#gone")
-    element, probability = jev.heal(snap, step)
+    element, probability = jev.heal(snap, step, snap.elements)
     assert set(post.bodies[0]["questions"]["heal"]["criteria"]) == {"e2", "none"}
     assert element.id == "e2" and probability == pytest.approx(0.8)
 
@@ -223,65 +287,83 @@ def test_heal_offers_only_fill_elements_for_a_fill_step(post):
 
 def test_usage_counter_accumulates_and_records_the_model(post):
     assert jev.usage_snapshot() is None
-    post.reply = _answers(outcome={"type": "noul", "noul": 0.5})
-    jev.judge(_snap([]), "x", "goal")
-    jev.judge(_snap([]), "x", "goal")
+    post.reply = _answers(outcome_1={"type": "noul", "noul": 0.5})
+    jev.judge(_snap([]), ["x"], "goal")
+    jev.judge(_snap([]), ["x"], "goal")
     usage = jev.usage_snapshot()
     assert usage["calls"] == 2 and usage["input_tokens"] == 200 and usage["model"] == "jev-1.13.0"
     assert usage["latency_ms"] >= 0
 
 
-def test_missing_key_raises_before_any_request(monkeypatch):
-    monkeypatch.setattr(config, "TYPESAFE_API_KEY", "")
-    monkeypatch.setattr(httpx, "post", lambda *a, **k: pytest.fail("no request may be made"))
-    monkeypatch.setattr(httpx, "get", lambda *a, **k: pytest.fail("no request may be made"))
-    with pytest.raises(RuntimeError, match="TYPESAFE_API_KEY is not set"):
-        jev._post({})
-    with pytest.raises(RuntimeError, match="TYPESAFE_API_KEY is not set"):
-        jev.ping()
+def _client(monkeypatch, post=None, get=None):
+    """Replace the pooled client; each verb pops its next response or calls a function."""
+    def verb(source):
+        return lambda *a, **k: source(*a, **k) if callable(source) else source.pop(0)
+    monkeypatch.setattr(jev, "_client", SimpleNamespace(post=verb(post), get=verb(get)))
+    monkeypatch.setattr(config, "TYPESAFE_API_KEY", "test-key")
 
 
 def _response(status, payload=None, text=""):
     return SimpleNamespace(status_code=status, is_error=status >= 400, text=text, json=lambda: payload or {})
 
 
+def test_missing_key_raises_before_any_request(monkeypatch):
+    def fail(*a, **k):
+        pytest.fail("no request may be made")
+
+    _client(monkeypatch, post=fail, get=fail)
+    monkeypatch.setattr(config, "TYPESAFE_API_KEY", "")
+    with pytest.raises(RuntimeError, match="TYPESAFE_API_KEY is not set"):
+        jev._post({})
+    with pytest.raises(RuntimeError, match="TYPESAFE_API_KEY is not set"):
+        jev.ping()
+
+
+def test_post_sends_a_gzipped_json_body_through_the_shared_client(monkeypatch):
+    import gzip
+    import json
+
+    sent = []
+    _client(monkeypatch, post=lambda url, **k: sent.append(k) or _response(200, {"answers": {}}))
+    jev._post({"questions": {"a": 1}})
+    jev._post({"questions": {"b": 2}})
+    assert len(sent) == 2
+    assert sent[0]["headers"]["Content-Encoding"] == "gzip"
+    assert sent[0]["headers"]["Content-Type"] == "application/json"
+    assert json.loads(gzip.decompress(sent[1]["content"])) == {"questions": {"b": 2}}
+
+
 def test_ping_returns_the_first_model_and_a_latency(monkeypatch):
-    monkeypatch.setattr(config, "TYPESAFE_API_KEY", "test-key")
-    monkeypatch.setattr(httpx, "get", lambda *a, **k: _response(200, {"models": [{"name": "jev-latest"}]}))
+    _client(monkeypatch, get=[_response(200, {"models": [{"name": "jev-latest"}]})])
     result = jev.ping()
     assert result["model"] == "jev-latest" and isinstance(result["latency_ms"], int)
 
 
 def test_ping_reports_a_rejected_key(monkeypatch):
-    monkeypatch.setattr(config, "TYPESAFE_API_KEY", "bad")
-    monkeypatch.setattr(httpx, "get", lambda *a, **k: _response(401, {"detail": {"message": "nope"}}))
+    _client(monkeypatch, get=[_response(401, {"detail": {"message": "nope"}})])
     with pytest.raises(RuntimeError, match="TYPESAFE_API_KEY was rejected"):
         jev.ping()
 
 
 def test_post_retries_on_429_then_succeeds(monkeypatch):
-    monkeypatch.setattr(config, "TYPESAFE_API_KEY", "test-key")
     monkeypatch.setattr(jev.time, "sleep", lambda s: None)
     responses = [_response(429), _response(200, {"answers": {}})]
-    monkeypatch.setattr(httpx, "post", lambda *a, **k: responses.pop(0))
+    _client(monkeypatch, post=responses)
     assert jev._post({}) == {"answers": {}}
     assert not responses
 
 
 def test_post_raises_with_the_status_and_body(monkeypatch):
-    monkeypatch.setattr(config, "TYPESAFE_API_KEY", "test-key")
-    monkeypatch.setattr(httpx, "post", lambda *a, **k: _response(400, text="bad question"))
+    _client(monkeypatch, post=[_response(400, text="bad question")])
     with pytest.raises(RuntimeError, match="HTTP 400: bad question"):
         jev._post({})
 
 
 def test_network_failure_becomes_a_runtime_error(monkeypatch):
-    monkeypatch.setattr(config, "TYPESAFE_API_KEY", "test-key")
-
     def boom(*a, **k):
         raise httpx.ConnectError("no route")
 
-    monkeypatch.setattr(httpx, "post", boom)
+    _client(monkeypatch, post=boom)
     with pytest.raises(RuntimeError, match="Jev request failed"):
         jev._post({})
 

@@ -25,14 +25,27 @@ def test_run_case_resolves_ws_and_vars_in_start_path(monkeypatch):
 
 
 def _heal_stubs(monkeypatch, el, p, performed=None):
-    monkeypatch.setattr(replay, "observe", lambda page, **kw: SimpleNamespace())
-    monkeypatch.setattr(replay.jev, "heal", lambda snap, step: (el, p))
+    monkeypatch.setattr(replay, "observe", lambda page, **kw: SimpleNamespace(elements=[]))
+    monkeypatch.setattr(replay.jev, "heal", lambda snap, step, elements: (el, p))
     monkeypatch.setattr(replay, "selectors_for", lambda page, el, hints=(): ["#new", "#alt"])
     monkeypatch.setattr(replay, "perform", performed or (lambda *a, **kw: None))
 
 
-def _el(label="Delete", frame=None):
-    return SimpleNamespace(role="button", label=label, frame=frame)
+def _el(label="Delete", frame=None, state=None):
+    return SimpleNamespace(role="button", label=label, frame=frame, state=state or {})
+
+
+def test_heal_offers_only_elements_the_runner_would_accept(monkeypatch):
+    keep = _el("Remove")
+    table = [_el("Delete", state={"disabled": "true"}), _el("Delete", frame='iframe[name="f"]'),
+             _el("Cancel"), keep]
+    offered = []
+    _heal_stubs(monkeypatch, None, 0.0)
+    monkeypatch.setattr(replay, "observe", lambda page, **kw: SimpleNamespace(elements=table))
+    monkeypatch.setattr(replay.jev, "heal", lambda snap, step, elements: (offered.extend(elements), (None, 0.0))[1])
+    step = Step(id="s1", action="click", selector="#old", description="click button Delete")
+    assert replay._try_heal(None, step, replay.Ctx()) is None
+    assert offered == [keep]
 
 
 def test_heal_accepts_a_confident_matching_element(monkeypatch):
@@ -91,7 +104,7 @@ def _healing_run(monkeypatch, steps, outcomes):
     fix = replay.Heal(step="s1", old="#old", new="#new", at="now", reason="jev picked [button Delete] p=0.91")
     monkeypatch.setattr(replay, "_try_heal", lambda page, step, ctx: fix if step.id == "s1" else None)
     case = Case(name="c", intent="i", steps=steps)
-    return case, replay.run_case(case, types.SimpleNamespace(page=None, ws=""))
+    return case, replay.run_case(case, types.SimpleNamespace(page=types.SimpleNamespace(url="/home"), ws=""))
 
 
 def test_heal_is_persisted_on_a_passing_run(monkeypatch):
@@ -119,25 +132,43 @@ def test_heal_is_not_persisted_when_a_later_step_fails(monkeypatch):
 # --- jev assertions ---
 
 
-def _judged(monkeypatch, probabilities):
-    queue = list(probabilities)
-    monkeypatch.setattr(replay, "observe", lambda page, **kw: SimpleNamespace())
-    monkeypatch.setattr(replay, "settle", lambda page: None)
-    monkeypatch.setattr(replay.jev, "judge", lambda snap, outcome, goal: queue.pop(0))
-    page = SimpleNamespace(wait_for_timeout=lambda ms: None)
+def _judged(monkeypatch, probabilities, fingerprints=("a", "b", "c"), assertion="{{name}} is listed"):
+    """_judge where each look sees the next fingerprint and each judge call the next probability."""
+    queue, looks, calls = list(probabilities), iter(fingerprints), []
+    monkeypatch.setattr(replay, "observe", lambda page, **kw: SimpleNamespace(fingerprint=next(looks)))
+    monkeypatch.setattr(replay, "wait_for_change", lambda page, before: SimpleNamespace(fingerprint=next(looks)))
+
+    def judge(snap, outcomes, goal):
+        calls.append(outcomes)
+        return [queue.pop(0) for _ in outcomes]
+
+    monkeypatch.setattr(replay.jev, "judge", judge)
     case = Case(name="c", intent="create {{name}}", steps=[])
-    return replay._judge(page, case, Assertion(assertion="{{name}} is listed"), replay.Ctx(vars={"name": "gh-1"}))
+    r = replay._judge(None, case, Assertion(assertion=assertion), replay.Ctx(vars={"name": "gh-1"}))
+    return r, calls
 
 
 def test_jev_assertion_passes_at_the_threshold(monkeypatch):
-    r = _judged(monkeypatch, [config.JUDGE_THRESHOLD])
+    r, _ = _judged(monkeypatch, [config.JUDGE_THRESHOLD])
     assert r.passed and r.mode == "jev" and r.confidence == config.JUDGE_THRESHOLD
 
 
-def test_jev_assertion_rejudges_after_a_settle(monkeypatch):
+def test_jev_assertion_rejudges_once_the_page_changes(monkeypatch):
     # Async data can land after the step settles, so a low first read is retried.
-    r = _judged(monkeypatch, [0.2, 0.95])
-    assert r.passed and r.confidence == 0.95
+    r, calls = _judged(monkeypatch, [0.2, 0.95])
+    assert r.passed and r.confidence == 0.95 and len(calls) == 2
+
+
+def test_jev_assertion_on_an_unchanged_page_is_judged_once(monkeypatch):
+    r, calls = _judged(monkeypatch, [0.2], fingerprints=("a", "a", "a"))
+    assert not r.passed and r.confidence == 0.2 and len(calls) == 1
+
+
+def test_compound_assertion_is_judged_in_one_call(monkeypatch):
+    r, calls = _judged(monkeypatch, [0.9, 0.3], fingerprints=("a", "a", "a"),
+                       assertion="{{name}} has the template selected and is mapped to the route")
+    assert calls == [["gh-1 has the template selected", "is mapped to the route"]]
+    assert not r.passed and r.confidence == 0.3
 
 
 def test_judge_failure_becomes_a_failed_assertion(monkeypatch):
@@ -180,13 +211,28 @@ def test_run_case_emits_a_shot_after_each_step_it_ran_but_not_a_skipped_one(monk
     monkeypatch.setattr(replay, "goto_app", lambda page, url: None)
     monkeypatch.setattr(replay, "run_step", lambda page, step, ctx: StepOutcome(
         ok=False, mode="failed", selector="#a", error="gone"))
-    page = SimpleNamespace(screenshot=lambda **kw: b"jpeg")
+    page = SimpleNamespace(screenshot=lambda **kw: b"jpeg", url="https://app.example.com/FYABC123/home")
     case = Case(name="c", intent="i", steps=[Step(id="s1", action="click", selector="#a"),
                                              Step(id="s2", action="click", selector="#b")])
     run_id = events.start(None, "run", "c", {})
     replay.run_case(case, SimpleNamespace(page=page, ws="FY1"), heal=False)
     kinds = [e["kind"] for e in db.runs().find_one({"_id": run_id})["events"]]
     assert kinds == ["step", "shot", "step"]
+
+
+def test_the_step_event_carries_the_page_key_and_a_skipped_step_none(monkeypatch):
+    from groundhog import db, events
+
+    monkeypatch.setattr(replay, "save", lambda case: None)
+    monkeypatch.setattr(replay, "goto_app", lambda page, url: None)
+    monkeypatch.setattr(replay, "run_step", lambda page, step, ctx: StepOutcome(ok=False, selector="#a", error="x"))
+    page = SimpleNamespace(screenshot=lambda **kw: b"jpeg", url="https://app.example.com/FYABC123/templates?q=1")
+    case = Case(name="c", intent="i", steps=[Step(id="s1", action="click", selector="#a"),
+                                             Step(id="s2", action="click", selector="#b")])
+    run_id = events.start(None, "run", "c", {})
+    replay.run_case(case, SimpleNamespace(page=page, ws="FYABC123"), heal=False)
+    steps = [e for e in db.runs().find_one({"_id": run_id})["events"] if e["kind"] == "step"]
+    assert [s["path"] for s in steps] == ["/:ws/templates", ""]
 
 
 def test_run_case_counts_the_run_without_overwriting_an_edit_made_mid_run(monkeypatch):
@@ -202,6 +248,6 @@ def test_run_case_counts_the_run_without_overwriting_an_edit_made_mid_run(monkey
 
     monkeypatch.setattr(replay, "goto_app", lambda page, url: None)
     monkeypatch.setattr(replay, "run_step", edit_while_running)
-    replay.run_case(case, SimpleNamespace(page=SimpleNamespace(), ws="FY1"), heal=False)
+    replay.run_case(case, SimpleNamespace(page=SimpleNamespace(url="/FY1/home"), ws="FY1"), heal=False)
     saved = store.load("c")
     assert (saved.intent, saved.meta.runs) == ("edited", 1)

@@ -47,7 +47,7 @@ class Snapshot:
 def observe(page) -> Snapshot:
     """Every rendered element in the page and its frames, offered whether or not it is
     scrolled into view: Playwright locators scroll to their target themselves."""
-    top = page.evaluate(JS) or {}
+    top = page.evaluate(JS, MAX_ELEMENTS) or {}
     elements = _elements(top, None, "e")
     omitted = top.get("omitted", 0)
 
@@ -63,7 +63,7 @@ def observe(page) -> Snapshot:
             if not box or box["width"] <= 0 or box["height"] <= 0:
                 continue
             sel = _frame_selector(fe)
-            data = f.evaluate(JS) or {}
+            data = f.evaluate(JS, MAX_ELEMENTS) or {}
             n += 1
             elements += _elements(data, sel, f"f{n}e")
             omitted += data.get("omitted", 0)

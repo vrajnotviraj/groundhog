@@ -158,26 +158,33 @@ class _Page:
 
 
 def _install(monkeypatch, page, decisions, perform=None, judge=0.9, value="gh-1"):
-    """Wire the loop to fakes; returns the list of (history, exclude) seen by choose."""
+    """Wire the loop to fakes; returns the list of (history, exclude) seen by choose.
+    `judge` is the verdict for every look, or a callable that returns the next one.
+    choose() carries the first look on DONE/WAIT/NONE/BLOCKED, as the real one does."""
     seen = []
     it = iter(decisions)
+    verdict = judge if callable(judge) else lambda: judge
 
-    def choose(snap, goal, history, exclude=frozenset()):
+    def choose(snap, goal, history, exclude=frozenset(), outcomes=()):
         seen.append((list(history), set(exclude)))
         d = next(it)
         if isinstance(d, Exception):
             raise d
+        if d.operation in ("DONE", "WAIT", "NONE", "BLOCKED"):
+            d.outcomes = [verdict() for _ in outcomes]
         return d
 
-    monkeypatch.setattr(author, "observe", lambda pg: SimpleNamespace(
-        url=pg.url, title="t", text=pg.text, elements=[], omitted=0, fingerprint=pg.fp))
+    def observe(pg):
+        return SimpleNamespace(url=pg.url, title="t", text=pg.text, elements=[], omitted=0, fingerprint=pg.fp)
+
+    monkeypatch.setattr(author, "observe", observe)
+    monkeypatch.setattr(author, "wait_for_change", lambda pg, before, timeout_ms=1500: observe(pg))
     monkeypatch.setattr(author, "on_picker", lambda pg: False)
-    monkeypatch.setattr(author, "settle", lambda pg: None)
     monkeypatch.setattr(author, "selectors_for",
                         lambda pg, el, hints=(): [f'role={el.role}[name="{el.label}"]', f"#{el.id}"])
     monkeypatch.setattr(author, "perform", perform or (lambda pg, step, ctx: None))
     monkeypatch.setattr(author.jev, "choose", choose)
-    monkeypatch.setattr(author.jev, "judge", lambda *a, **k: judge)
+    monkeypatch.setattr(author.jev, "judge", lambda snap, outcomes, goal: [verdict() for _ in outcomes])
     monkeypatch.setattr(author.jev, "value", lambda *a, **k: value)
     return seen
 
@@ -188,10 +195,33 @@ def _run(page, trace=None):
                                10, trace)
 
 
-def test_done_accepted_at_the_threshold(monkeypatch):
+def _no_judge(*a, **k):
+    raise AssertionError("judge() must not be called")
+
+
+def test_done_accepted_at_the_threshold_from_the_verdicts_choose_carried(monkeypatch):
     page = _Page()
     _install(monkeypatch, page, [_decision("DONE")], judge=config.JUDGE_THRESHOLD)
+    monkeypatch.setattr(author.jev, "judge", _no_judge)
     assert _run(page) == ([], "done")
+
+
+def test_a_low_done_on_an_unchanged_page_keeps_the_first_verdict(monkeypatch):
+    page = _Page()
+    seen = _install(monkeypatch, page, [_decision("DONE"), _decision("DONE")], judge=0.3)
+    monkeypatch.setattr(author.jev, "judge", _no_judge)
+    assert _run(page) == ([], "blocked") and len(seen) == 2
+
+
+def test_a_low_done_is_judged_again_once_the_page_changes(monkeypatch):
+    page = _Page()
+    _install(monkeypatch, page, [_decision("DONE")], judge=0.3)
+    calls = []
+    monkeypatch.setattr(author, "wait_for_change", lambda pg, before, timeout_ms=1500: SimpleNamespace(
+        url=pg.url, text="", elements=[], fingerprint="sha256:landed"))
+    monkeypatch.setattr(author.jev, "judge", lambda snap, outcomes, goal: calls.append(snap) or [0.9])
+    assert _run(page) == ([], "done")
+    assert [s.fingerprint for s in calls] == ["sha256:landed"]
 
 
 def test_done_rejected_continues_then_blocks_on_the_second_rejection(monkeypatch):
@@ -302,21 +332,22 @@ def test_wait_is_not_recorded_and_checks_the_goal_first(monkeypatch):
     # An unsure Jev (WAIT) triggers the outcome check: not yet true → wait and go on;
     # true → finish without Jev ever saying DONE.
     page = _Page()
-    seen = _install(monkeypatch, page, [_decision("WAIT"), _decision("WAIT")])
     verdicts = iter([0.2, 0.9])
-    monkeypatch.setattr(author.jev, "judge", lambda *a, **k: next(verdicts))
+    seen = _install(monkeypatch, page, [_decision("WAIT"), _decision("WAIT")], judge=lambda: next(verdicts))
     trace, reason = _run(page)
     assert (trace, reason) == ([], "done")
     assert [h["op"] for h in seen[1][0]] == ["WAIT"]
 
 
-def test_a_raising_judge_counts_as_a_failed_iteration(monkeypatch):
+def test_a_raising_second_look_counts_as_a_failed_iteration(monkeypatch):
     page = _Page()
-    seen = _install(monkeypatch, page, [_decision("DONE")] * 3)
+    seen = _install(monkeypatch, page, [_decision("DONE")] * 3, judge=0.1)
 
     def boom(*a, **k):
         raise RuntimeError("Jev returned HTTP 500: upstream")
 
+    monkeypatch.setattr(author, "wait_for_change", lambda pg, before, timeout_ms=1500: SimpleNamespace(
+        url=pg.url, fingerprint="sha256:moved"))
     monkeypatch.setattr(author.jev, "judge", boom)
     assert _run(page) == ([], "blocked")
     assert len(seen) == 3 and seen[2][0][0]["error"].startswith("Jev returned HTTP 500")
@@ -345,18 +376,6 @@ def test_a_raising_loop_keeps_the_actions_recorded_so_far(monkeypatch):
     assert len(trace) == 1 and trace[0]["description"] == "click button Create"
 
 
-def test_observe_changed_waits_for_a_late_render(monkeypatch):
-    # A drawer that renders a beat after the click must not be read as a no-op.
-    from types import SimpleNamespace
-
-    snaps = iter([("same", "/a"), ("same", "/a"), ("drawer", "/a")])
-    monkeypatch.setattr(author, "observe",
-                        lambda page: SimpleNamespace(**dict(zip(("fingerprint", "url"), next(snaps)))))
-    page = SimpleNamespace(wait_for_timeout=lambda ms: None)
-    after = author._observe_changed(page, SimpleNamespace(fingerprint="same", url="/a"), timeout_ms=5000)
-    assert after.fingerprint == "drawer"
-
-
 def test_new_line_skips_relative_times_and_numbers():
     assert author._new_line("", "27s ago\n3 minutes ago\njust now\n12\nAccounts", None) == "Accounts"
 
@@ -383,9 +402,8 @@ def test_a_lone_empty_field_is_typed_into_when_jev_rejects_every_target(monkeypa
     field = _el("Enter integration account name", role="textbox", kind="fill", node=7)
     none = SimpleNamespace(operation="NONE", element=None, confidence=0.5, probability=0.8, latency_ms=5,
                            detail="", wanted="TYPE")
-    _install(monkeypatch, page, [none, _decision("DONE")])
     verdicts = iter([0.1, 0.9])  # not done before the fill, done after it
-    monkeypatch.setattr(author.jev, "judge", lambda *a, **k: next(verdicts))
+    _install(monkeypatch, page, [none, _decision("DONE")], judge=lambda: next(verdicts))
     monkeypatch.setattr(author, "observe", lambda pg: SimpleNamespace(
         url=pg.url, title="t", text=pg.text, elements=[field], omitted=0, fingerprint=pg.fp))
     trace, reason = _run(page)

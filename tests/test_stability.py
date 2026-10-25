@@ -103,6 +103,7 @@ class _Page:
         self.gotos = []         # every url passed to goto()
         self.evaluates = []     # (js, arg) for every evaluate()
         self.eval_result = None  # what evaluate() hands back
+        self.url_waits = []     # timeout of every wait_for_url()
 
     def locator(self, selector):
         return _Loc(self, selector)
@@ -132,6 +133,11 @@ class _Page:
 
     def wait_for_load_state(self, state, timeout=None):
         self.load_states.append(state)
+
+    def wait_for_url(self, predicate, timeout=None):
+        self.url_waits.append(timeout)
+        if not predicate(self.url):
+            raise PWTimeout(f"wait_for_url: Timeout {timeout}ms exceeded.")
 
 
 def _observe(page):
@@ -231,14 +237,48 @@ def test_exists_but_not_actionable_click_gets_a_next_strategy_hint(monkeypatch):
     assert "Timeout 10000ms exceeded" in out.error  # original first line kept
 
 
-def test_run_step_observes_the_page_once(monkeypatch):
-    # The drift gate and the no-op baseline share one observe() instead of
-    # computing it back-to-back twice.
+def test_a_step_with_expects_never_observes_and_reports_no_drift(monkeypatch):
     page = _mk(monkeypatch, counts={"#save": 1})
     step = Step(action="click", selector="#save", page_fingerprint="sha256:abc",
                 expects=Expect(kind="url_contains", value="home"))
-    actions.run_step(page, step, actions.Ctx())
-    assert page.observes == 1
+    out = actions.run_step(page, step, actions.Ctx())
+    assert out.ok and not out.drift and page.observes == 0
+    assert page.url_waits == [config.STEP_TIMEOUT_MS]
+
+
+def test_a_click_without_expects_observes_a_baseline_and_reports_drift(monkeypatch):
+    page = _mk(monkeypatch, counts={"#save": 1})
+    page.intercepts[("click", "#save")] = lambda: setattr(page, "aria", "- dialog")
+    out = actions.run_step(page, Step(action="click", selector="#save", page_fingerprint="sha256:abc"),
+                           actions.Ctx())
+    assert out.ok and out.drift and page.observes == 2  # baseline plus the no-op check
+
+
+def test_url_expects_fail_when_the_url_never_matches(monkeypatch):
+    page = _mk(monkeypatch)
+    assert not actions.check_expects(page, Expect(kind="url_contains", value="/saved"), actions.Ctx())
+
+
+def test_wait_for_change_returns_on_a_late_render(monkeypatch):
+    # A drawer that renders a beat after the click must not be read as a no-op.
+    page = _mk(monkeypatch)
+    before = SimpleNamespace(fingerprint=page.aria, url=page.url)
+    original = page.wait_for_timeout
+
+    def render_after_two_polls(ms):
+        original(ms)
+        if page.polls == 2:
+            page.aria = "- dialog"
+
+    page.wait_for_timeout = render_after_two_polls
+    after = actions.wait_for_change(page, before, timeout_ms=5000)
+    assert after.fingerprint == "- dialog" and page.polls == 2
+
+
+def test_wait_for_change_gives_up_at_the_bound(monkeypatch):
+    page = _mk(monkeypatch)
+    after = actions.wait_for_change(page, SimpleNamespace(fingerprint=page.aria, url=page.url), timeout_ms=1000)
+    assert after.fingerprint == page.aria and page.slept <= 1250
 
 
 def test_settle_waits_for_loading_indicators_and_never_throws(monkeypatch):
@@ -368,6 +408,16 @@ def test_a_configured_workspace_id_is_opened_directly(monkeypatch, tmp_path):
 
     assert page.gotos[-1] == "https://app.example.com/FYABCDEF/home"
     assert s.ws == "FYABCDEF"
+
+
+def test_the_picker_is_left_through_the_configured_workspace_link(monkeypatch, tmp_path):
+    link = 'role=link[name="Your Workspace"]'
+    page = _mk(monkeypatch, url="https://app.example.com/workspaces", counts={link: 1})
+    session, s = _login_session(monkeypatch, tmp_path, page)
+    monkeypatch.setattr(config, "LOGIN_WORKSPACE", "Your Workspace")
+    page.intercepts[("click", link)] = lambda: setattr(page, "url", "https://app.example.com/FYABCDEF/home")
+    s._select_workspace()
+    assert [a[:2] for a in page.actions] == [("click", link)]
 
 
 def test_login_without_a_workspace_names_the_env_var(monkeypatch, tmp_path):

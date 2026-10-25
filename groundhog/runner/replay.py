@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from typing import Literal
 
 from groundhog import config, events, jev
-from groundhog.browser.actions import Ctx, check_expects, goto_app, perform, resolve_path, run_step, settle
+from groundhog.browser.actions import Ctx, check_expects, goto_app, perform, resolve_path, run_step, wait_for_change
 from groundhog.browser.session import Session
 from groundhog.browser.snapshot import observe, selectors_for
 from groundhog.cases.schema import Assertion, Case, Expect, Heal
@@ -30,6 +30,7 @@ class StepResult:
     ms: int
     drift: bool = False
     error: str | None = None
+    path: str = ""  # page key after the step; "" when skipped
 
 
 @dataclass
@@ -87,14 +88,15 @@ def _judge(page, case: Case, a: Assertion, ctx: Ctx, retries: int = 2) -> Assert
         if _absent(outcomes, snap, ctx):
             return AssertionResult(assertion=a.assertion, mode="jev", passed=True, confidence=1.0,
                                    reasoning="the named value is nowhere on the page")
-        p = min(jev.judge(snap, o, goal) for o in outcomes)
+        p = min(jev.judge(snap, outcomes, goal))
         for _ in range(retries):
             if p >= config.JUDGE_THRESHOLD:
                 break
-            # Data can load after the step settles, so judge again.
-            page.wait_for_timeout(1500)
-            settle(page)
-            p = min(jev.judge(observe(page), o, goal) for o in outcomes)
+            # Data can load after the step settles, so judge again once the page changes.
+            after = wait_for_change(page, snap)
+            if after.fingerprint != snap.fingerprint:
+                snap = after
+                p = min(jev.judge(snap, outcomes, goal))
     except Exception as e:
         # A judge that cannot run is a failed assertion, never a dead run.
         return AssertionResult(assertion=a.assertion, mode="jev", passed=False, reasoning=str(e)[:200])
@@ -130,11 +132,9 @@ def run_case(case: Case, session: Session, vars: dict[str, str] | None = None,
                     outcome.ok = True
 
             ms = int((time.monotonic() - t0) * 1000)
-            if outcome.ok:
-                s = StepResult(step.id, step.description, mode, selector, ms, outcome.drift)
-            else:
-                s = StepResult(step.id, step.description, "failed", selector, ms, outcome.drift, error)
-                aborted = True  # later steps depend on this one
+            s = StepResult(step.id, step.description, mode if outcome.ok else "failed", selector, ms,
+                           outcome.drift, error, config.ws_path(page.url))
+            aborted = not outcome.ok  # later steps depend on this one
         result.steps.append(s)
         events.emit("step", i=i, **asdict(s))
         if s.mode != "skipped":
@@ -170,7 +170,11 @@ def _contradicts(step, el) -> bool:
 def _try_heal(page, step, ctx: Ctx) -> Heal | None:
     """Ask Jev for a replacement element once; return a Heal when its selector works, else None."""
     try:
-        el, p = jev.heal(observe(page), step)
+        snap = observe(page)
+        # Offer only what the checks below could accept.
+        elements = [el for el in snap.elements if el.state.get("disabled") != "true"
+                    and el.frame == step.frame and not _contradicts(step, el)]
+        el, p = jev.heal(snap, step, elements)
         if el is None or p < config.HEAL_THRESHOLD or el.frame != step.frame or _contradicts(step, el):
             return None
         sel = selectors_for(page, el, hints=list((ctx.vars or {}).values()))[0]

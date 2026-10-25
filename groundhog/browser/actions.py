@@ -186,17 +186,24 @@ def perform(page: Page, step: Step, ctx: Ctx, selector: str | None = None,
     settle(page)
 
 
+def wait_for_change(page: Page, before, timeout_ms: int = 1500):
+    """Snapshot the page once it differs from `before`, or when `timeout_ms` runs out.
+    Drawers and dialogs render after settle() returns, so a single look can miss them."""
+    deadline = time.monotonic() + timeout_ms / 1000
+    while True:
+        after = observe(page)
+        if after.fingerprint != before.fingerprint or after.url != before.url or time.monotonic() > deadline:
+            return after
+        page.wait_for_timeout(250)
+
+
 def check_expects(page: Page, expects: Expect, ctx: Ctx) -> bool:
     """Waits (bounded) rather than sampling — data often lands after settle."""
     value = render(expects.value, ctx.vars)
-    if expects.kind == "url_contains":
-        deadline = time.monotonic() + config.STEP_TIMEOUT_MS / 1000
-        while value not in page.url:
-            if time.monotonic() > deadline:
-                return False
-            page.wait_for_timeout(200)
-        return True
     try:
+        if expects.kind == "url_contains":
+            page.wait_for_url(lambda url: value in url, timeout=config.STEP_TIMEOUT_MS)
+            return True
         loc = page.get_by_text(value) if expects.kind == "text_visible" else page.locator(value)
         # .first alone can land on a hidden duplicate (an offscreen label, a tooltip) and
         # time out while the visible one sits right there: wait for any visible match.
@@ -244,11 +251,13 @@ def _perform_settle_retry(page: Page, step: Step, ctx: Ctx, sel: str) -> None:
 def run_step(page: Page, step: Step, ctx: Ctx) -> StepOutcome:
     """The static replay of one step: drift gate → selector → fallbacks →
     expects → no-op detection. Zero LLM calls."""
-    # One observe per step: it is expensive on a big page, so compute the
-    # fingerprint once and reuse it for both the drift gate and the no-op baseline.
-    need_fp = bool(step.page_fingerprint) or (step.action == "click" and not step.expects)
-    current_fp = observe(page).fingerprint if need_fp else None
-    drift = bool(step.page_fingerprint) and current_fp != step.page_fingerprint
+    # observe() is expensive on a big page, so it runs only when the no-op check needs a
+    # baseline; drift is reported from that same fingerprint and only when it exists.
+    # A click that targets an entity by its {{var}} (already-selected row) or focuses a field
+    # (search box, combobox) legitimately changes nothing visible, so it needs no baseline.
+    needs_baseline = step.action == "click" and not step.expects and not FOCUS_CLICK.search(step.selector or "")
+    before_fp = observe(page).fingerprint if needs_baseline else None
+    drift = bool(step.page_fingerprint) and before_fp is not None and before_fp != step.page_fingerprint
 
     if step.action == "goto":
         # A goto can "succeed" yet land elsewhere — the app redirects entity
@@ -268,7 +277,7 @@ def run_step(page: Page, step: Step, ctx: Ctx) -> StepOutcome:
     if on_picker(page):
         recover_workspace(page)
 
-    before_url, before_fp = page.url, current_fp
+    before_url = page.url
     candidates = [(i, sel) for i, sel in enumerate([step.selector, *step.fallback_selectors]) if sel]
     ready = _await_ready(page, step, ctx, candidates)
     # When nothing resolved within the budget, still attempt the primary once so
@@ -284,14 +293,10 @@ def run_step(page: Page, step: Step, ctx: Ctx) -> StepOutcome:
         if step.expects and not check_expects(page, step.expects, ctx):
             return StepOutcome(ok=False, selector=sel, mode=mode, drift=drift,
                                error=f"expects failed: {step.expects.kind}={step.expects.value!r}{page_says(page)}")
-        # A "successful" click that changed nothing is a silent no-op — fail it
-        # so it gets reported. Only when the step has no expects of its own.
-        # Exempt: a click that targets an entity by its {{var}} (already-selected row) or
-        # focuses a field (search box, combobox) legitimately changes nothing visible.
-        if step.action == "click" and not step.expects and not FOCUS_CLICK.search(step.selector or ""):
-            if page.url == before_url and observe(page).fingerprint == before_fp:
-                return StepOutcome(ok=False, selector=sel, mode=mode, drift=drift,
-                                   error=f"no-op: {step.action} changed nothing on the page")
+        # A "successful" click that changed nothing is a silent no-op — fail it so it gets reported.
+        if needs_baseline and page.url == before_url and observe(page).fingerprint == before_fp:
+            return StepOutcome(ok=False, selector=sel, mode=mode, drift=drift,
+                               error=f"no-op: {step.action} changed nothing on the page")
         return StepOutcome(ok=True, selector=sel, mode=mode, drift=drift)
 
     return StepOutcome(ok=False, drift=drift, error=last_error or "no usable selector")
