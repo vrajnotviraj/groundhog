@@ -1,5 +1,4 @@
 .stack { display: grid; gap: var(--gh-gap); align-content: start; min-width: 0; }
 .case { display: flex; align-items: center; gap: 16px; min-height: var(--gh-row); padding: 0 16px; }
 .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
-.add { display: flex; align-items: center; gap: 16px; }
-.add select { flex: 1; min-width: 0; min-height: var(--gh-input); padding: 0 12px; border: 0; border-radius: var(--gh-radius); background: var(--gh-surface); }
+.remove { margin-left: 8px; }

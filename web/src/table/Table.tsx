@@ -3,12 +3,14 @@ import styles from './Table.module.css'
 
 export interface Column<T> {
   header: string
+  // drawn in the header cell instead of the header text, such as a select-all checkbox
+  head?: ReactNode
   cell: (row: T) => ReactNode
   width?: string
   align?: 'end'
-  // On a phone identity, key and action share line 1 and the rest wrap below;
+  // On a phone lead, identity, key and action share line 1 and the rest wrap below;
   // between 640 and 1100px a secondary column moves under the identity.
-  role?: 'identity' | 'key' | 'action' | 'secondary'
+  role?: 'lead' | 'identity' | 'key' | 'action' | 'secondary'
 }
 
 interface Props<T> {
@@ -31,7 +33,7 @@ export function Table<T>({ label, columns, rows, rowKey }: Props<T>) {
   return (
     <div role="table" aria-label={label} className={styles.table} style={template}>
       <div role="row" className={styles.header}>
-        {columns.map((c) => <span key={c.header} role="columnheader" className={cellClass(c)}>{c.header}</span>)}
+        {columns.map((c) => <span key={c.header} role="columnheader" className={cellClass(c)}>{c.head ?? c.header}</span>)}
       </div>
       {rows.map((row) => (
         <div key={rowKey(row)} role="row" className={styles.row}>

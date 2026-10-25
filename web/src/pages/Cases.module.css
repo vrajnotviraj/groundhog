@@ -1,2 +1,32 @@
-.search { max-width: 360px; padding-bottom: 8px; }
-.heal { margin-left: 8px; padding: 2px 6px; border-radius: 999px; background: var(--gh-sun); color: var(--gh-sun-ink); font: 600 12px/1 var(--gh-font); }
+.search { width: 280px; max-width: 100%; }
+.tag { margin-left: 8px; padding: 2px 6px; border-radius: var(--gh-radius); background: var(--gh-sun); color: var(--gh-sun-ink); font: 500 13px/1 var(--gh-font); }
+.pick, .pickAll { display: flex; align-items: center; justify-content: center; width: 44px; }
+.pick { min-height: 44px; cursor: pointer; }
+.health { display: flex; align-items: center; gap: 8px; }
+.rate { width: 40px; text-align: right; font-weight: 500; }
+
+/* Shown while cases are selected; sticks to the bottom of the viewport as a tile, with no shadow. */
+.bar {
+  position: sticky;
+  bottom: 8px;
+  z-index: 5;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  min-height: 56px;
+  padding: 0 16px;
+  border-radius: var(--gh-radius);
+  background: var(--gh-ink);
+  color: var(--gh-ink-text);
+}
+.count { font-weight: 500; }
+.note { font: var(--gh-small); color: var(--gh-surface-2); }
+.push { margin-left: auto; }
+.bar .onInk, .bar .onInk:hover { color: var(--gh-ink-text); }
+
+@media (max-width: 639px) {
+  .search { width: 100%; }
+  .bar { padding: 8px 16px; }
+  .bar button, .bar a { min-height: 44px; }
+}

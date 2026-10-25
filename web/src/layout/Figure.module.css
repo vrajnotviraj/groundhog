@@ -1,2 +1,2 @@
-.figure { display: grid; gap: 8px; align-content: space-between; min-height: 104px; }
-.value { font: var(--gh-figure); }
+.figure { display: flex; flex-direction: column; gap: 4px; min-height: 104px; }
+.value { margin-top: auto; padding-top: 8px; font: var(--gh-figure); }

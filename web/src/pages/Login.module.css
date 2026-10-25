@@ -8,9 +8,11 @@
   padding: 8px;
 }
 .mascot { min-height: 480px; padding: 40px; }
-.pitch { position: relative; font: 600 40px/1.05 var(--gh-font); letter-spacing: -0.03em; max-width: 17ch; text-wrap: balance; }
-.form { display: flex; flex-direction: column; justify-content: flex-end; gap: 16px; padding: 32px; background: var(--gh-surface-2); }
-.form > button { align-self: flex-start; }
+.pitch { position: relative; font: var(--gh-display); letter-spacing: -0.035em; max-width: 17ch; text-wrap: balance; }
+.form { display: flex; flex-direction: column; gap: 24px; padding: 32px; }
+/* centred in the space under the wordmark */
+.fields { display: grid; gap: 16px; justify-items: start; margin-block: auto; }
+.fields > label { width: 100%; }
 .wordmark { font: var(--gh-title); letter-spacing: -0.01em; }
 
 @media (min-width: 1000px) {
@@ -18,8 +20,8 @@
 }
 
 @media (max-width: 639px) {
-  .page { grid-template-columns: 1fr; grid-template-rows: 300px auto; min-height: 0; }
-  .mascot { min-height: 300px; padding: 24px 16px; }
-  .pitch { font-size: 28px; }
+  .page { grid-template-columns: 1fr; grid-template-rows: 200px auto; min-height: 0; }
+  .mascot { min-height: 200px; padding: 24px 16px; }
+  .pitch { display: none; }
   .form { padding: 24px 16px; }
 }

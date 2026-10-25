@@ -25,6 +25,7 @@ Bone ground, chocolate ink, one green.
 | `--gh-ink` | `#2A1D17` | Text, the name band, the groundhog's tile |
 | `--gh-accent` | `#3D6433` | The action, and a green run. Pass green is the accent |
 | `--gh-fail` | `#A8231B` | A failed run. The only colour outside the palette |
+| `--gh-sun` | `#F5C518` | The one primary action, live runs, healed steps |
 
 Rough proportions on a screen: surfaces 55, ink 25, ground 10 (the gaps),
 green 5. Fail red appears only when something failed. Text on a dark tile is

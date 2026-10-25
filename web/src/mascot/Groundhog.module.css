@@ -22,3 +22,11 @@
 .sleep .body { animation: popUp 700ms var(--gh-spring) both, breathe 3.4s 700ms ease-in-out infinite; }
 .zzz text { transform-box: fill-box; animation: drift 2.4s ease-out infinite; }
 .zzz text:nth-child(2) { animation-delay: 1.2s; }
+
+/* Mascot: the scene on an ink tile. */
+.mascot { position: relative; overflow: hidden; background: var(--gh-ink); color: var(--gh-ink-text); min-height: 160px; isolation: isolate; }
+.scene { position: absolute; z-index: -1; right: 4%; bottom: 0; width: min(78%, 360px); }
+
+/* Empty: the head and one sentence. */
+.empty { display: flex; align-items: center; gap: 16px; grid-column: 1 / -1; min-height: 88px; }
+.head { flex: none; width: 56px; height: 56px; }

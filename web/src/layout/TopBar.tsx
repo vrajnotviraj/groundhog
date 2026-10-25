@@ -2,11 +2,13 @@ import { useQuery } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'react'
 import { Link, NavLink } from 'react-router'
 import { api } from '../api'
-import { count } from '../format'
 import { Groundhog } from '../mascot/Groundhog'
 import styles from './TopBar.module.css'
 
-const LINKS = [['/', 'Overview'], ['/cases', 'Cases'], ['/flows', 'Flows'], ['/runs', 'Runs'], ['/settings', 'Settings']]
+const LINKS = [
+  ['/', 'Overview'], ['/cases', 'Cases'], ['/coverage', 'Coverage'], ['/flows', 'Flows'], ['/runs', 'Runs'],
+  ['/settings', 'Settings'],
+]
 
 interface Props {
   email: string
@@ -19,8 +21,9 @@ export function TopBar({ email, onSignOut }: Props) {
   const nav = useRef<HTMLElement>(null)
   const menu = useRef<HTMLButtonElement>(null)
   const close = () => setOpen(false)
-  const live = useQuery({ queryKey: ['runs', { status: 'running' }], queryFn: () => api.runs({ status: 'running', limit: 20 }), refetchInterval: 5000 })
-  const running = live.data ?? []
+  const running = useRunsWith('running')
+  const queued = useRunsWith('queued')
+  const chip = [running.length && `${running.length} live`, queued.length && `${queued.length} queued`].filter(Boolean).join(' · ')
 
   useEffect(() => {
     if (!open) return
@@ -37,9 +40,9 @@ export function TopBar({ email, onSignOut }: Props) {
     <header className={styles.top}>
       <div className={styles.bar}>
         <NavLink to="/" className={styles.wordmark} onClick={close}><Groundhog mark className={styles.mark} />groundhog</NavLink>
-        {running.length > 0 && (
-          <Link to={running.length === 1 ? `/runs/${running[0].id}` : '/runs'} className={styles.live} onClick={close}>
-            <Groundhog mark mood="dig" className={styles.liveHead} />{count(running.length, 'run')} live
+        {chip && (
+          <Link to={running.length === 1 && !queued.length ? `/runs/${running[0].id}` : '/runs'} className={styles.live} onClick={close}>
+            <Groundhog mark mood="dig" className={styles.liveHead} />{chip}
           </Link>
         )}
         <button type="button" ref={menu} className={styles.menu} aria-expanded={open} aria-controls="nav" onClick={() => setOpen(!open)}>
@@ -60,5 +63,11 @@ export function TopBar({ email, onSignOut }: Props) {
       </div>
     </header>
   )
+}
+
+// Runs in one status, polled for the live chip.
+function useRunsWith(status: 'running' | 'queued') {
+  const runs = useQuery({ queryKey: ['runs', { status }], queryFn: () => api.runs({ status, limit: 100 }), refetchInterval: 5000 })
+  return runs.data ?? []
 }
 

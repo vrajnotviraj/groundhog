@@ -1,12 +1,1 @@
 .field { display: grid; gap: var(--gh-gap); align-content: start; min-width: 0; }
-.field input, .field select, .field textarea {
-  width: 100%;
-  min-height: var(--gh-input);
-  padding: 0 12px;
-  border: 0;
-  border-radius: var(--gh-radius);
-  background: var(--gh-surface);
-  transition: background-color var(--gh-motion) ease-out;
-}
-.field textarea { padding: 10px 12px; resize: vertical; line-height: 1.45; }
-.field input:hover, .field select:hover, .field textarea:hover { background: var(--gh-surface-hover); }

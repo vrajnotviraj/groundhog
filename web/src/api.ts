@@ -1,6 +1,7 @@
 // Typed calls to the console API.
 import type {
-  Case, CaseDetail, CaseSummary, Flow, FlowDetail, FlowSummary, Run, RunSummary, SettingsHealth, User, Vars,
+  AppMap, Case, CaseDetail, CaseSummary, Flow, FlowDetail, FlowSummary, Run, RunSummary, SettingsHealth, Suggestion,
+  User, Vars,
 } from './types'
 
 export class ApiError extends Error {
@@ -13,6 +14,7 @@ export interface RunOptions {
   vars?: Vars
   heal?: boolean
   headed?: boolean
+  retries?: 0 | 1 | 2
 }
 
 interface RunFilters {
@@ -72,10 +74,23 @@ export const api = {
     return get<RunSummary[]>(`/runs?${query}`)
   },
   run: (id: string) => get<Run>(`/runs/${encode(id)}`),
+  batchRun: (body: { cases: string[]; flows: string[]; retries?: 0 | 1 | 2; heal?: boolean }) =>
+    request<{ run_ids: string[] }>('POST', '/runs/batch', body),
   cancelRun: (id: string) => request<void>('POST', `/runs/${encode(id)}/cancel`),
   deleteRun: (id: string) => request<void>('DELETE', `/runs/${encode(id)}`),
   shotUrl: (id: string, seq: number) => `/api/runs/${encode(id)}/shots/${seq}`,
   eventsUrl: (id: string, after: number) => `/api/runs/${encode(id)}/events?after=${after}`,
+
+  map: () => get<AppMap>('/map'),
+  crawl: (body: { scope: string; max_pages: number; headed: boolean }) =>
+    request<{ run_id: string }>('POST', '/map/crawl', body),
+
+  suggestions: () => get<Suggestion[]>('/suggestions'),
+  suggest: (body: { docs_urls: string[]; text: string; use_map: boolean; count: number }) =>
+    request<Suggestion[]>('POST', '/suggestions', body),
+  authorSuggestion: (id: string) => request<{ run_id: string }>('POST', `/suggestions/${encode(id)}/author`),
+  dismissSuggestion: (id: string) => request<void>('POST', `/suggestions/${encode(id)}/dismiss`),
+  deleteSuggestion: (id: string) => request<void>('DELETE', `/suggestions/${encode(id)}`),
 
   settingsHealth: () => get<SettingsHealth>('/settings/health'),
   checkLogin: () => request<{ ok: boolean; detail: string }>('POST', '/settings/check-login'),
@@ -86,6 +101,8 @@ export const api = {
 
 export const meQuery = { queryKey: ['me'], queryFn: api.me }
 export const casesQuery = { queryKey: ['cases'], queryFn: api.cases }
+export const anthropicKeySet = (h?: SettingsHealth) => h?.optional.find((o) => o.name === 'ANTHROPIC_API_KEY')?.set
+
 export const settingsHealthQuery = { queryKey: ['settings-health'], queryFn: api.settingsHealth, staleTime: 60_000 }
 
 export const isAdmin = (me?: { role: User['role'] }) => me?.role === 'admin'

@@ -11,6 +11,18 @@
   --gh-accent-ink: #FFFFFF;
   --gh-pass: var(--gh-accent);
   --gh-fail: #A8231B;
+  --gh-fail-ink: #FFFFFF;
+  /* sun: the one primary action, live runs, healed steps */
+  --gh-sun: #F5C518;
+  --gh-sun-hover: #FFD43B;
+  --gh-sun-ink: #2A1D17;
+
+  /* one tone darker, for hover */
+  --gh-surface-hover: #CFC9BC;
+  --gh-surface-2-hover: #A99D8D;
+  --gh-ink-hover: #3A2A22;
+  --gh-accent-hover: #34572C;
+  --gh-fail-hover: #921E17;
 
   /* mascot, drawn from the palette */
   --gh-fur: var(--gh-surface-2);

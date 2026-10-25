@@ -1,4 +1,4 @@
-.table { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1px; min-width: 0; }
+.table { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--gh-gap); min-width: 0; }
 .header, .row {
   display: grid;
   grid-template-columns: var(--columns);
@@ -6,10 +6,8 @@
   align-items: center;
   padding: 0 16px;
 }
-.header { min-height: 24px; margin-bottom: 7px; font: var(--gh-small); color: var(--gh-muted); }
-.row { min-height: var(--gh-row); background: var(--gh-surface); transition: background-color var(--gh-motion) ease-out; }
-.row:nth-child(2) { border-top-left-radius: var(--gh-radius); border-top-right-radius: var(--gh-radius); }
-.row:last-child { border-bottom-left-radius: var(--gh-radius); border-bottom-right-radius: var(--gh-radius); }
+.header { min-height: 24px; font: var(--gh-small); color: var(--gh-muted); }
+.row { min-height: var(--gh-row); border-radius: var(--gh-radius); background: var(--gh-surface); transition: background-color var(--gh-motion) ease-out; }
 .row:hover { background: var(--gh-surface-hover); }
 .row > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rest { color: var(--gh-muted); }
@@ -30,6 +28,7 @@
 @media (max-width: 639px) {
   .header { display: none; }
   .row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; padding: 12px 16px; }
+  .lead { order: -1; }
   .identity { order: 0; flex: 1 1 0; }
   .key { order: 1; }
   .action { order: 2; }

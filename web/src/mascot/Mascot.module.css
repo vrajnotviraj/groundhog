@@ -1,2 +1,0 @@
-.mascot { position: relative; overflow: hidden; background: var(--gh-ink); color: var(--gh-ink-text); min-height: 160px; isolation: isolate; }
-.groundhog { position: absolute; z-index: -1; right: 4%; bottom: 0; width: min(78%, 360px); }

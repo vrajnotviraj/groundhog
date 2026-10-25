@@ -20,10 +20,13 @@
   --gh-surface-hover: #CFC9BC;
   --gh-surface-2-hover: #A99D8D;
   --gh-ink-hover: #3A2A22;
+  --gh-accent-hover: #34572C;
+  --gh-fail-hover: #921E17;
 
   /* type */
   --gh-font: "Albert Sans", system-ui, sans-serif;
-  --gh-code: "JetBrains Mono", ui-monospace, monospace;
+  --gh-code: "JetBrains Mono", ui-monospace, monospace; /* taste-skill-ignore: the code face, used only by <code> */
+  --gh-display: 600 48px/1.02 var(--gh-font);
   --gh-title: 600 24px/1.25 var(--gh-font);
   --gh-section: 500 16px/1.45 var(--gh-font);
   --gh-figure: 500 36px/1.1 var(--gh-font);
@@ -32,10 +35,11 @@
   --gh-mono: 400 13px/1.45 var(--gh-code);
 
   /* shape and motion */
-  --gh-radius: 8px;
+  --gh-radius: 4px;
   --gh-gap: 8px;
   --gh-pad: 16px;
-  --gh-row: 48px;
+  --gh-row: 44px;
+  --gh-bar: 56px;
   --gh-control: 36px;
   --gh-input: 40px;
   --gh-column: 1200px;

@@ -1,0 +1,18 @@
+.small { display: inline-flex; gap: 2px; vertical-align: middle; }
+.small .tile { width: 12px; height: 12px; border-radius: 2px; }
+
+.large { display: flex; flex-wrap: wrap; gap: 4px; padding: 0; list-style: none; }
+.large li { animation: drop 450ms var(--gh-spring) both; }
+.large .tile { display: block; width: 24px; height: 24px; border-radius: 2px; transition: background-color var(--gh-motion) ease-out; }
+
+.empty { background: var(--gh-ground); }
+.passed { background: var(--gh-accent); }
+.flaky { background: var(--gh-sun); }
+.failed { background: var(--gh-fail); }
+.live { background: var(--gh-sun); animation: blink 1.2s ease-in-out infinite; }
+.large .passed:hover { background: var(--gh-accent-hover); }
+.large .flaky:hover, .large .live:hover { background: var(--gh-sun-hover); }
+.large .failed:hover { background: var(--gh-fail-hover); }
+
+@keyframes drop { from { opacity: 0; transform: translateY(-14px); } }
+@keyframes blink { 50% { opacity: 0.45; } }

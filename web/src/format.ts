@@ -41,8 +41,9 @@ export function deriveName(intent: string): string {
   return (intent.toLowerCase().match(/[a-z0-9]+/g) ?? []).slice(0, 5).join('-') || 'case'
 }
 
-// A run's title; authoring and compose runs without a name have no target yet.
+// A run's title; authoring and compose runs without a name have no target yet, a crawl's target is its scope.
 export function runTitle(run: { target: string; kind: string }): string {
+  if (run.kind === 'crawl') return `Crawl ${run.target || '/'}`
   return run.target || (run.kind === 'compose' ? 'New flow' : 'New case')
 }
 

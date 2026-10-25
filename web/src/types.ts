@@ -1,8 +1,8 @@
-// Shapes the API returns: cases, flows, runs and run events.
+// Shapes the API returns: cases, flows, runs, run events, the coverage map and suggested tests.
 
 export type Mode = 'static' | 'fallback' | 'healed' | 'failed' | 'skipped'
 export type Status = 'queued' | 'running' | 'passed' | 'failed' | 'error'
-export type RunKind = 'run' | 'flow' | 'author' | 'compose'
+export type RunKind = 'run' | 'flow' | 'author' | 'compose' | 'crawl'
 export type Vars = Record<string, string>
 
 export interface Step {
@@ -55,6 +55,17 @@ export interface CaseSummary {
   start_path: string
   updated_at: string
   last_run?: RunRef
+  health: Health
+}
+
+// Over the case's last 10 finished runs; history is oldest first.
+export interface Health {
+  runs: number
+  passed: number
+  flaky: number
+  avg_ms: number | null
+  heals: number
+  history: { id: string; status: Status; flaky: boolean }[]
 }
 
 export interface FlowCase {
@@ -89,11 +100,15 @@ export interface RunSummary {
   modes?: Mode[]
   ai_calls?: number
   error?: string
+  attempts?: number
+  flaky?: boolean
+  retries?: number
 }
 
 export interface CaseDetail extends Case {
   updated_at: string
   runs: RunSummary[]
+  health: Health
 }
 
 export interface FlowDetail extends Flow {
@@ -127,6 +142,7 @@ export interface StepEvent extends EventBase {
   ms: number
   drift: boolean
   error: string | null
+  path?: string
 }
 
 export interface AssertionEvent extends EventBase {
@@ -167,7 +183,23 @@ export interface NoteEvent extends EventBase {
   text: string
 }
 
-export type RunEvent = CaseEvent | StepEvent | AssertionEvent | DecisionEvent | ActionEvent | ShotEvent | NoteEvent
+// Emitted right before a retry; n is 2 for the first retry.
+export interface AttemptEvent extends EventBase {
+  kind: 'attempt'
+  n: number
+}
+
+export interface PageEvent extends EventBase {
+  kind: 'page'
+  path: string
+  title: string
+  controls: number
+  links: number
+  depth: number
+}
+
+export type RunEvent =
+  | CaseEvent | StepEvent | AssertionEvent | DecisionEvent | ActionEvent | ShotEvent | NoteEvent | AttemptEvent | PageEvent
 
 interface JevUsage {
   calls: number
@@ -204,4 +236,54 @@ export interface Check {
 export interface SettingsHealth {
   checks: Check[]
   optional: { name: string; set: boolean; note: string }[]
+  workers: number
+}
+
+export interface Control {
+  role: string
+  label: string
+  kind: 'nav' | 'mutation' | 'destructive' | 'other'
+}
+
+export interface MapPage {
+  path: string
+  title: string
+  controls: Control[]
+  links: string[]
+  cases: string[]
+  last_seen: string
+}
+
+export interface MapSection {
+  name: string
+  covered: number
+  total: number
+  pages: MapPage[]
+}
+
+export interface Gap {
+  path: string
+  control: Control
+  why: string
+}
+
+export interface AppMap {
+  crawled_at: string | null
+  sections: MapSection[]
+  gaps: Gap[]
+}
+
+export interface Suggestion {
+  id: string
+  name: string
+  intent: string
+  why: string
+  vars: Vars
+  source: 'docs' | 'map' | 'both'
+  status: 'open' | 'authored' | 'dismissed'
+  case?: string
+  run_id?: string
+  run_status?: Status
+  created_at: string
+  created_by: string
 }

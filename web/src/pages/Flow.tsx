@@ -13,7 +13,6 @@ import { useStartRun } from '../run/live'
 import { RunTable } from '../run/RunTable'
 import { toVars, VarRows } from '../forms/VarRows'
 import type { FlowDetail } from '../types'
-import styles from './Flow.module.css'
 
 export function Flow() {
   const name = useParams().name!
@@ -33,11 +32,20 @@ function Builder({ flow }: { flow: FlowDetail }) {
   const names = (cases.data ?? []).map((c) => c.name)
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const [dirty, setDirty] = useState(false)
+  const store = () => api.saveFlow(flow.name, { name: flow.name, intent: flow.intent, vars: toVars(vars), chain, cleanup })
   const save = useMutation({
-    mutationFn: () => api.saveFlow(flow.name, { name: flow.name, intent: flow.intent, vars: toVars(vars), chain, cleanup }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['flow', flow.name] }),
+    mutationFn: store,
+    onSuccess: () => {
+      setDirty(false)
+      queryClient.invalidateQueries({ queryKey: ['flow', flow.name] })
+    },
   })
-  const run = useStartRun(() => api.runFlow(flow.name))
+  // Run starts the saved flow, so unsaved edits are saved first.
+  const run = useStartRun(async () => {
+    if (dirty) await store()
+    return api.runFlow(flow.name)
+  })
   const remove = useMutation({
     mutationFn: () => api.deleteFlow(flow.name),
     onSuccess: () => {
@@ -46,20 +54,20 @@ function Builder({ flow }: { flow: FlowDetail }) {
     },
   })
   const error = save.error ?? run.error ?? remove.error
-  // any edit after a save turns the button back from Saved to Save
-  const edited = <T,>(set: (value: T) => void) => (value: T) => { save.reset(); set(value) }
+  // any edit after a save turns the button back from Saved to Save changes
+  const edited = <T,>(set: (value: T) => void) => (value: T) => { save.reset(); setDirty(true); set(value) }
 
   return (
     <>
       <PageTitle title={flow.name} subline={flow.intent || null}>
         <Button variant="primary" disabled={run.isPending} onClick={() => run.mutate()}>Run</Button>
-        <Button disabled={save.isPending} onClick={() => save.mutate()}>{save.isSuccess ? 'Saved' : 'Save'}</Button>
+        <Button disabled={save.isPending} onClick={() => save.mutate()}>{saveLabel(dirty, save.isSuccess)}</Button>
         {isAdmin(me.data) && (
           <Confirm label="Delete" question={`Delete the flow ${flow.name}? Its cases stay.`} onConfirm={() => remove.mutate()} />
         )}
       </PageTitle>
       {error && <p className="fail" role="alert">{error.message}</p>}
-      <div className={styles.columns}>
+      <div className="split">
         <CaseStack title="Chain" cases={chain} options={names} onChange={edited(setChain)} />
         <CaseStack title="Cleanup" cases={cleanup} options={names} onChange={edited(setCleanup)} />
       </div>
@@ -71,4 +79,9 @@ function Builder({ flow }: { flow: FlowDetail }) {
       </Board>
     </>
   )
+}
+
+function saveLabel(dirty: boolean, saved: boolean): string {
+  if (dirty) return 'Save changes'
+  return saved ? 'Saved' : 'Save'
 }

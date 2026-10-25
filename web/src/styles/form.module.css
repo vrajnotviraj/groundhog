@@ -2,6 +2,10 @@
 .form > * { width: 100%; }
 .form > button { width: auto; }
 .check { display: flex; align-items: center; gap: 8px; min-height: 24px; }
-.check input { width: 16px; height: 16px; accent-color: var(--gh-ink); }
-.panel { gap: 16px; max-width: none; background: var(--gh-surface-2); }
-.code { padding: 12px; border: 0; border-radius: var(--gh-radius); background: var(--gh-surface); font: var(--gh-mono); resize: vertical; }
+/* Panels sit on surface, so their fields drop to ground and muted text keeps its contrast. */
+.panel { gap: 16px; max-width: none; background: var(--gh-surface); }
+.panel :is(input:not([type=checkbox]), select, textarea) { background: var(--gh-ground); }
+.panel :is(input:not([type=checkbox]), select, textarea):hover { background: var(--gh-surface-hover); }
+.code { padding: 12px; font: var(--gh-mono); }
+.head { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; }
+.actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }

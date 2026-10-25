@@ -1,11 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState, type FormEvent } from 'react'
+import { NavLink, useParams } from 'react-router'
 import { api, isAdmin, meQuery, settingsHealthQuery } from '../api'
 import { Board } from '../layout/Board'
 import { Button } from '../forms/Button'
 import { Confirm } from '../forms/Confirm'
 import { Field } from '../forms/Field'
-import { Groundhog } from '../mascot/Groundhog'
+import { Figure } from '../layout/Figure'
 import { LoadError, LoadingRows } from '../mascot/Loading'
 import { PageTitle } from '../layout/PageTitle'
 import { Select } from '../forms/Select'
@@ -15,26 +16,26 @@ import { ago, count } from '../format'
 import type { Check, User } from '../types'
 import styles from './Settings.module.css'
 
-type Tab = 'Health' | 'Users' | 'About'
+const TABS = [['/settings', 'Health'], ['/settings/users', 'Users'], ['/settings/about', 'About']]
+// a check named like an env var is one .env setting
+const ENV_NAME = /^[A-Z0-9_]+$/
 
 export function Settings() {
   const me = useQuery(meQuery)
-  const tabs: Tab[] = isAdmin(me.data) ? ['Health', 'Users', 'About'] : ['Health', 'About']
-  const [tab, setTab] = useState<Tab>('Health')
+  const admin = isAdmin(me.data)
+  const { tab } = useParams()
+  const shown = tab === 'about' || (tab === 'users' && admin) ? tab : 'health'
   return (
     <>
       <PageTitle title="Settings" />
       <nav className={styles.tabs} aria-label="Settings sections">
-        {tabs.map((name) => (
-          <button key={name} type="button" aria-current={tab === name ? 'page' : undefined}
-            className={tab === name ? styles.active : styles.tab} onClick={() => setTab(name)}>
-            {name}
-          </button>
+        {TABS.filter(([to]) => admin || to !== '/settings/users').map(([to, label]) => (
+          <NavLink key={to} to={to} end className={({ isActive }) => (isActive ? styles.active : styles.tab)}>{label}</NavLink>
         ))}
       </nav>
-      {tab === 'Health' && <Health />}
-      {tab === 'Users' && <Users myEmail={me.data?.email} />}
-      {tab === 'About' && <About />}
+      {shown === 'health' && <Health />}
+      {shown === 'users' && <Users myEmail={me.data?.email} />}
+      {shown === 'about' && <About />}
     </>
   )
 }
@@ -44,31 +45,37 @@ function Health() {
   const login = useMutation({ mutationFn: api.checkLogin })
   if (health.isError) return <LoadError what="the health checks" onRetry={health.refetch} />
   if (!health.data) return <LoadingRows count={4} />
-  const failing = health.data.checks.filter((c) => !c.ok).length
+  const { checks, optional, workers } = health.data
+  const failing = checks.filter((c) => !c.ok).length
   return (
     <>
       <Board title="Checks" className={styles.checks} aside={
         <span className={styles.aside}>
-          <Groundhog mark mood={failing ? 'worried' : 'happy'} className={styles.head} />
           <span className="muted">{failing ? `${failing} failing` : 'all pass'}</span>
           <Button variant="text" onClick={() => health.refetch()}>Check again</Button>
         </span>}>
-        {health.data.checks.map((check) => <CheckTile key={check.name} check={check} />)}
-        <Tile className={styles.check}>
-          <span className={`${styles.mark} ${login.data ? (login.data.ok ? styles.ok : styles.bad) : ''}`}>{loginMark(login.data?.ok)}</span>
+        <EnvTile checks={checks.filter((c) => ENV_NAME.test(c.name))} />
+        {checks.filter((c) => !ENV_NAME.test(c.name)).map((check) => <CheckTile key={check.name} check={check} />)}
+        <Tile className={styles.stack}>
+          <span className={`marker ${login.data ? (login.data.ok ? 'pass' : 'fail') : ''}`}>{loginMark(login.data?.ok)}</span>
           <span className={styles.name}>App login</span>
           <span className="small muted">{login.data?.detail ?? <>Signs in to the app under test with the <code>.env</code> account. Takes a few seconds.</>}</span>
           <Button disabled={login.isPending} onClick={() => login.mutate()}>{login.isPending ? 'Checking' : 'Run login check'}</Button>
         </Tile>
       </Board>
       <Board title="Optional settings">
-        {health.data.optional.map((o) => (
+        {optional.map((o) => (
           <Tile key={o.name} className={styles.optional}>
             <code>{o.name}</code>
             <span className={styles.name}>{o.set ? 'Set' : 'Not set'}</span>
             <span className={`small muted ${styles.note}`}>{o.note}</span>
           </Tile>
         ))}
+        <Tile className={styles.optional}>
+          <code>MAX_WORKERS</code>
+          <span className={styles.name}>{workers} at a time</span>
+          <span className={`small muted ${styles.note}`}>How many runs the console runs at once; the rest wait as queued.</span>
+        </Tile>
       </Board>
     </>
   )
@@ -79,12 +86,29 @@ function loginMark(ok?: boolean) {
   return ok ? 'OK' : 'Fix'
 }
 
+// The .env checks as one figure, the failing ones listed first with their hint.
+function EnvTile({ checks }: { checks: Check[] }) {
+  const set = checks.filter((c) => c.ok).length
+  const names = [...checks].sort((a, b) => Number(a.ok) - Number(b.ok))
+  return (
+    <Figure label="Environment" value={`${set} of ${checks.length} set`} note={
+      <span className={styles.names}>
+        {names.map((c) => (
+          <span key={c.name} className={c.ok ? undefined : 'fail'}>
+            <code>{c.name}</code>{!c.ok && c.detail !== c.name && <> {c.detail}</>}
+          </span>
+        ))}
+      </span>
+    } />
+  )
+}
+
 function CheckTile({ check }: { check: Check }) {
   return (
-    <Tile className={styles.check}>
-      <span className={`${styles.mark} ${check.ok ? styles.ok : styles.bad}`}>{check.ok ? 'OK' : 'Fix'}</span>
-      {/^[A-Z0-9_]+$/.test(check.name) ? <code>{check.name}</code> : <span className={styles.name}>{check.name}</span>}
-      {check.detail !== check.name && <span className="small muted">{check.detail}</span>}
+    <Tile className={styles.stack}>
+      <span className={`marker ${check.ok ? 'pass' : 'fail'}`}>{check.ok ? 'OK' : 'Fix'}</span>
+      <span className={styles.name}>{check.name}</span>
+      {check.detail !== check.name && <span className={`small muted ${styles.detail}`}>{check.detail}</span>}
     </Tile>
   )
 }
@@ -155,15 +179,15 @@ function About() {
   const mongo = checks.data?.checks.find((c) => c.name.toLowerCase().includes('mongo'))
   return (
     <Board className={styles.about}>
-      <Tile className={styles.check}>
+      <Tile className={styles.stack}>
         <span className="small muted">Version</span>
-        <span className={styles.mark}>{health.data?.version ?? '-'}</span>
+        <span className={styles.name}>{health.data?.version ?? '-'}</span>
       </Tile>
-      <Tile className={styles.check}>
+      <Tile className={styles.stack}>
         <span className="small muted">Database</span>
         <span className={styles.name}>{mongo?.detail ?? '-'}</span>
       </Tile>
-      <Tile className={styles.check}>
+      <Tile className={styles.stack}>
         <span className="small muted">Documentation</span>
         <span><code>README.md</code> in the repo root covers the CLI, the console and <code>./start.sh</code>.</span>
       </Tile>

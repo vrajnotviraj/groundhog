@@ -1,10 +1,13 @@
 .headline { display: flex; gap: var(--gh-gap); align-items: stretch; }
 .mascot { flex: none; width: 152px; min-height: 112px; }
+.status { display: flex; flex-direction: column; gap: var(--gh-gap); }
+.status > :first-child { flex: 1; }
+.flaky { display: flex; align-items: center; min-height: 28px; padding: 0 12px; font: 500 13px/1 var(--gh-font); white-space: nowrap; }
 .waiting { flex: 1; display: flex; align-items: center; }
 .runError { padding: 13px 16px; }
 
 .columns { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: var(--gh-gap); align-items: start; padding-top: 16px; }
-.shot { position: sticky; top: 16px; }
+.shot { position: sticky; top: calc(var(--gh-bar) + 8px); }
 .screenshot { padding: 8px; }
 .screenshot p { padding: 8px; }
 .screenshot img { width: 100%; height: auto; border-radius: 2px; }

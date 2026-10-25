@@ -7,9 +7,9 @@
 .small .failed { background: var(--gh-fail); }
 .small .skipped { background: var(--gh-ground); }
 
-.large { display: flex; flex-wrap: wrap; gap: var(--gh-gap); flex: 1; min-width: 0; }
+.large { display: flex; flex-wrap: wrap; align-content: start; gap: var(--gh-gap); flex: 1; min-width: 0; }
 .large .tile {
-  flex: 1 1 40px;
+  flex: 0 1 56px;
   min-height: 40px;
   padding: 0 8px;
   border-radius: var(--gh-radius);
@@ -17,14 +17,26 @@
   align-items: flex-end;
   padding-bottom: 8px;
   font: 500 13px/1 var(--gh-font);
-  transition: transform var(--gh-motion) ease-out, filter var(--gh-motion) ease-out;
+  transition: transform var(--gh-motion) ease-out, background-color var(--gh-motion) ease-out;
   animation: land 400ms var(--gh-spring) both;
 }
-.large .tile:hover { filter: brightness(0.94); transform: translateY(-2px); }
 @keyframes land { from { transform: translateY(12px) scale(0.9); opacity: 0; } }
 .large .tile:active { transform: scale(0.98); }
 .large .static { background: var(--gh-surface); }
+.large .static:hover { background: var(--gh-surface-hover); }
 .large .fallback { background: var(--gh-surface-2); }
+.large .fallback:hover { background: var(--gh-surface-2-hover); }
 .large .healed { background: var(--gh-sun); color: var(--gh-sun-ink); }
+.large .healed:hover { background: var(--gh-sun-hover); }
 .large .failed { background: var(--gh-fail); color: var(--gh-fail-ink); }
+.large .failed:hover { background: var(--gh-fail-hover); }
 .large .skipped { background: var(--gh-ground); color: var(--gh-muted); }
+.large .skipped:hover { background: var(--gh-surface); }
+
+/* 35px fits 8 tiles on one row of a 343px phone column. */
+@media (max-width: 639px) {
+  .large .tile { flex: 0 1 35px; min-width: 32px; }
+}
+
+.lastRun { display: inline-flex; align-items: center; gap: 12px; max-width: 100%; }
+.lastRun > :last-child { flex: none; }

@@ -14,7 +14,7 @@
 .button:disabled { cursor: not-allowed; opacity: 0.55; }
 
 .primary { background: var(--gh-sun); color: var(--gh-sun-ink); font-weight: 600; }
-.primary:hover:not(:disabled) { background: var(--gh-sun-hover); transform: translateY(-1px); }
+.primary:hover:not(:disabled) { background: var(--gh-sun-hover); }
 
 .secondary { background: var(--gh-surface-2); color: var(--gh-ink); }
 .secondary:hover:not(:disabled) { background: var(--gh-surface-2-hover); }
@@ -25,3 +25,5 @@
 .quiet:hover:not(:disabled) { color: var(--gh-ink); }
 .destructive { color: var(--gh-fail); }
 .text:hover:not(:disabled), .destructive:hover:not(:disabled) { text-decoration: underline !important; text-underline-offset: 3px; }
+
+.confirm { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }

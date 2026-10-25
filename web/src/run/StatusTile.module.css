@@ -1,9 +1,4 @@
 .status { flex: none; white-space: nowrap; }
-.row { display: inline-flex; align-items: center; gap: 8px; font: 500 14px/1 var(--gh-font); color: var(--gh-ink); }
-.row::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--gh-surface-2); }
-.row:global(.pass)::before { background: var(--gh-accent); }
-.row:global(.fail) { color: var(--gh-fail); }
-.row:global(.fail)::before { background: var(--gh-fail); }
-.row:global(.sun)::before { background: var(--gh-sun); box-shadow: 0 0 0 3px rgb(245 197 24 / 0.3); animation: live 1.2s ease-in-out infinite; }
+/* A pass is the common case, so in rows only the exceptions carry a marker. */
+.status:global(.marker.pass)::before { display: none; }
 .figure { display: flex; align-items: flex-end; min-width: 176px; font: var(--gh-figure); }
-@keyframes live { 50% { opacity: 0.4; } }

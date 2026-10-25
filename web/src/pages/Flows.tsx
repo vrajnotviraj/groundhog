@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router'
-import { api } from '../api'
+import { api, casesQuery } from '../api'
 import { Button } from '../forms/Button'
 import { Empty } from '../mascot/Empty'
 import { LastRun } from '../run/LastRun'
@@ -15,20 +15,26 @@ const sentence = (cases: FlowCase[]) => cases.map((c) => c.case).join(', then ')
 
 export function Flows() {
   const flows = useQuery({ queryKey: ['flows'], queryFn: api.flows })
+  const cases = useQuery(casesQuery)
   const run = useStartRun((name: string) => api.runFlow(name))
+  const stepsOf = new Map((cases.data ?? []).map((c) => [c.name, c.steps]))
+  // the steps of every case the flow runs, which predicts how long it takes
+  const steps = (f: FlowSummary) => [...f.chain, ...f.cleanup].reduce((sum, c) => sum + (stepsOf.get(c.case) ?? 0), 0)
 
   const columns: Column<FlowSummary>[] = [
     { header: 'Name', role: 'identity', width: 'minmax(0, 1.5fr)', cell: (f) => <Link to={`/flows/${f.name}`}>{f.name}</Link> },
-    { header: 'Chain', role: 'secondary', width: 'minmax(0, 3fr)', cell: (f) => sentence(f.chain) },
-    { header: 'Cleanup', width: 'minmax(0, 1.5fr)', cell: (f) => sentence(f.cleanup) },
-    { header: 'Vars', width: '64px', align: 'end', role: 'key', cell: (f) => count(Object.keys(f.vars).length, 'var') },
+    {
+      header: 'Cases', role: 'secondary', width: 'minmax(0, 3fr)',
+      cell: (f) => <>{sentence(f.chain)}{f.cleanup.length > 0 && <span className="muted">; cleanup {sentence(f.cleanup)}</span>}</>,
+    },
+    { header: 'Steps', width: '72px', align: 'end', role: 'key', cell: (f) => (cases.data ? count(steps(f), 'step') : '-') },
     {
       header: 'Last run', width: 'minmax(136px, 1.5fr)',
       cell: (f) => <LastRun run={f.last_run} />,
     },
     {
       header: 'Run', width: '40px', role: 'action',
-      cell: (f) => <Button variant="text" disabled={run.isPending} onClick={() => run.mutate(f.name)}>Run</Button>,
+      cell: (f) => <Button variant="text" disabled={run.isPending && run.variables === f.name} onClick={() => run.mutate(f.name)}>Run</Button>,
     },
   ]
 

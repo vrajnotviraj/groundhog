@@ -6,23 +6,35 @@ import { Board } from '../layout/Board'
 import { Button } from '../forms/Button'
 import { Confirm } from '../forms/Confirm'
 import { Empty } from '../mascot/Empty'
+import { Figure } from '../layout/Figure'
+import { HistoryStrip } from '../run/HistoryStrip'
 import { LoadError, LoadingRows } from '../mascot/Loading'
 import { PageTitle } from '../layout/PageTitle'
 import { RunForm } from '../run/RunForm'
 import { RunTable } from '../run/RunTable'
 import { Table, type Column } from '../table/Table'
-import { ago, checkedBy, intentVars } from '../format'
+import { Tile } from '../layout/Tile'
+import { ago, checkedBy, count, duration, intentVars } from '../format'
 import { useStartRun } from '../run/live'
 import form from '../styles/form.module.css'
-import type { Assertion, Case as CaseDoc, Heal, Step } from '../types'
+import type { Assertion, Case as CaseDoc, Heal, Health, Step } from '../types'
+import styles from './Case.module.css'
 
 const STEP_COLUMNS: Column<Step>[] = [
-  { header: 'Id', width: '56px', cell: (s) => <code>{s.id}</code> },
   { header: 'Action', width: '64px', role: 'key', cell: (s) => s.action },
   { header: 'Description', role: 'identity', width: 'minmax(0, 2fr)', cell: (s) => s.description },
-  { header: 'Selector', width: 'minmax(0, 2fr)', cell: (s) => (s.selector ? <code>{s.selector}</code> : '-') },
-  { header: 'Fallbacks', width: '72px', align: 'end', cell: (s) => s.fallback_selectors.length },
-  { header: 'Expects', width: 'minmax(0, 1.5fr)', cell: (s) => (s.expects ? `${s.expects.kind.replace('_', ' ')}: ${s.expects.value}` : '-') },
+  {
+    header: 'Selector', width: 'minmax(0, 2fr)',
+    cell: (s) => (
+      <span className={styles.selector}>
+        {s.selector && <code>{s.selector}</code>}
+        <span className="small muted">
+          {s.id}{s.fallback_selectors.length > 0 && ` · ${count(s.fallback_selectors.length, 'fallback')}`}
+        </span>
+      </span>
+    ),
+  },
+  { header: 'Expects', width: 'minmax(0, 1.5fr)', cell: (s) => s.expects && `${s.expects.kind.replace('_', ' ')}: ${s.expects.value}` },
 ]
 
 const ASSERTION_COLUMNS: Column<Assertion>[] = [
@@ -56,7 +68,7 @@ export function Case() {
 
   if (detail.isError) return <><PageTitle title={name} /><LoadError what="this case" onRetry={detail.refetch} /></>
   if (!detail.data) return <><PageTitle title={name} /><LoadingRows /></>
-  const { runs, updated_at, ...doc } = detail.data
+  const { runs, updated_at, health, ...doc } = detail.data
   const toggle = (next: 'run' | 'json') => setPanel(panel === next ? null : next)
 
   return (
@@ -64,21 +76,48 @@ export function Case() {
       <PageTitle title={name} subline={doc.intent}>
         <Button variant="primary" onClick={() => toggle('run')}>Run</Button>
         <Button onClick={() => toggle('json')}>Edit JSON</Button>
-        <Button variant="text" onClick={() => download(doc)}>Download JSON</Button>
         {isAdmin(me.data) && (
           <Confirm label="Delete" question={`Delete the case ${name}? Its runs stay.`} onConfirm={() => remove.mutate()} />
         )}
       </PageTitle>
       {remove.error && <p className="fail" role="alert">{remove.error.message}</p>}
       {panel === 'run' && (
-        <RunForm varNames={intentVars(doc.intent)} pending={run.isPending} error={run.error?.message} onRun={run.mutate} />
+        <RunForm title="Run with" onClose={() => setPanel(null)} varNames={intentVars(doc.intent)} pending={run.isPending}
+          error={run.error?.message} onRun={run.mutate} />
       )}
       {panel === 'json' && <JsonEditor doc={doc} onSaved={() => setPanel(null)} />}
+      <HealthBoard health={health} />
       <CaseBlocks doc={doc} updatedAt={updated_at} />
-      <Board title="Recent runs">
-        {runs.length ? <RunTable runs={runs} /> : <Empty>Not run yet. Start one with Run.</Empty>}
-      </Board>
+      {runs.length > 0 && <Board title="Recent runs"><RunTable runs={runs} /></Board>}
     </>
+  )
+}
+
+// Pass rate, duration, heals and flaky runs over the last 10 runs, then each run as a tile.
+function HealthBoard({ health }: { health: Health }) {
+  const { runs, passed, avg_ms, heals, flaky, history } = health
+  if (!runs) {
+    return (
+      <Board title="Health" className={styles.health}>
+        <Figure label="Pass rate" value="-" />
+        <Figure label="Average duration" value="-" />
+        <Figure label="Heals" value="-" />
+        <Figure label="Flaky runs" value="-" />
+        <Empty>Not run yet. Start one with Run.</Empty>
+      </Board>
+    )
+  }
+  return (
+    <Board title="Health" className={styles.health}>
+      <Figure label={`Pass rate, last ${runs}`} value={`${Math.round((passed / runs) * 100)}%`} note={`${passed} of ${runs}`} />
+      <Figure label="Average duration" value={duration(avg_ms ?? undefined)} />
+      <Figure label="Heals" value={heals} />
+      <Figure label="Flaky runs" value={flaky} tone={flaky ? 'sun' : undefined} />
+      <Tile className={styles.history}>
+        <HistoryStrip runs={history} size="large" label={`Last ${count(runs, 'run')}, oldest first`} />
+        <span className="small muted">oldest → newest</span>
+      </Tile>
+    </Board>
   )
 }
 
@@ -119,7 +158,10 @@ function JsonEditor({ doc, onSaved }: { doc: CaseDoc; onSaved: () => void }) {
       <textarea aria-label="Case JSON" className={form.code} rows={20} spellCheck={false} value={text}
         onChange={(e) => setText(e.target.value)} />
       {save.error && <p className="fail" role="alert">{save.error.message}</p>}
-      <Button variant="primary" disabled={save.isPending} onClick={() => save.mutate()}>Save</Button>
+      <div className={form.actions}>
+        <Button variant="primary" disabled={save.isPending} onClick={() => save.mutate()}>Save</Button>
+        <Button variant="text" onClick={() => download(doc)}>Download</Button>
+      </div>
     </div>
   )
 }

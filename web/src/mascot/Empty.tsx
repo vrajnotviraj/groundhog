@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { Groundhog, type Mood } from './Groundhog'
-import styles from './Empty.module.css'
+import styles from './Groundhog.module.css'
 
 interface Props {
   children: ReactNode

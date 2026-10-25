@@ -5,6 +5,7 @@ import { LoadingRows } from './mascot/Loading'
 import { TopBar } from './layout/TopBar'
 import { Case } from './pages/Case'
 import { Cases } from './pages/Cases'
+import { Coverage } from './pages/Coverage'
 import { Flow } from './pages/Flow'
 import { Flows } from './pages/Flows'
 import { Login } from './pages/Login'
@@ -24,12 +25,14 @@ export function AppRoutes() {
         <Route path="cases" element={<Cases />} />
         <Route path="cases/new" element={<NewCase />} />
         <Route path="cases/:name" element={<Case />} />
+        <Route path="coverage" element={<Coverage />} />
+        <Route path="coverage/suggestions" element={<Coverage />} />
         <Route path="flows" element={<Flows />} />
         <Route path="flows/new" element={<NewFlow />} />
         <Route path="flows/:name" element={<Flow />} />
         <Route path="runs" element={<Runs />} />
         <Route path="runs/:id" element={<Run />} />
-        <Route path="settings" element={<Settings />} />
+        <Route path="settings/:tab?" element={<Settings />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>

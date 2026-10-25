@@ -1,0 +1,9 @@
+.fields { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 16px; }
+.pages { grid-template-columns: repeat(auto-fill, minmax(min(240px, 100%), 1fr)); }
+.page { display: grid; gap: 4px; align-content: start; overflow-wrap: anywhere; }
+.title { font-weight: 500; }
+.covered { font-weight: 500; color: var(--gh-accent); }
+
+@media (max-width: 639px) {
+  .fields { grid-template-columns: 1fr; }
+}

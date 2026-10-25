@@ -5,7 +5,7 @@ import { api, isAdmin, meQuery } from '../api'
 import { Board } from '../layout/Board'
 import { Button } from '../forms/Button'
 import { Confirm } from '../forms/Confirm'
-import { EventLog, groupEvents, stripOf } from '../run/EventLog'
+import { EventLog, groupEvents, lastAttempt, stripOf } from '../run/EventLog'
 import { Figure } from '../layout/Figure'
 import { LoadError, LoadingRows } from '../mascot/Loading'
 import type { Mood } from '../mascot/Groundhog'
@@ -21,10 +21,14 @@ import type { AssertionEvent, NoteEvent, Run as RunDoc } from '../types'
 import styles from './Run.module.css'
 
 const ASSERTION_COLUMNS: Column<AssertionEvent>[] = [
-  { header: 'Result', width: '80px', role: 'key', cell: (a) => (a.passed ? 'Passed' : <span className="fail">Failed</span>) },
+  {
+    header: 'Result', width: '80px', role: 'key',
+    cell: (a) => <span className={`marker ${a.passed ? 'pass' : 'fail'}`}>{a.passed ? 'Passed' : 'Failed'}</span>,
+  },
   { header: 'Assertion', role: 'identity', width: 'minmax(0, 2fr)', cell: (a) => a.assertion },
   { header: 'Checked by', width: '104px', cell: (a) => checkedBy(a.mode) },
-  { header: 'Reasoning', width: 'minmax(0, 3fr)', cell: (a) => a.reasoning },
+  // Jev's reasoning is only its probability, which the Confidence column already shows
+  { header: 'Reasoning', width: 'minmax(0, 3fr)', cell: (a) => (/^jev p=[\d.]+$/.test(a.reasoning) ? null : a.reasoning) },
   { header: 'Confidence', width: '88px', align: 'end', cell: (a) => a.confidence?.toFixed(2) },
 ]
 
@@ -44,7 +48,8 @@ export function Run() {
   const { rows: stripRows, modes } = stripOf(events)
   const newestShot = events.findLast((e) => e.kind === 'shot')?.seq
   const ran = live || groupEvents(events).length > 0
-  const assertions = events.filter((e): e is AssertionEvent => e.kind === 'assertion')
+  const retried = lastAttempt(events)
+  const assertions = events.filter((e): e is AssertionEvent => e.kind === 'assertion' && e.seq > (retried?.seq ?? 0))
 
   const jump = (index: number) => {
     const row = stripRows[index]
@@ -56,7 +61,7 @@ export function Run() {
 
   return (
     <>
-      <PageTitle title={runTitle(run)} subline={subline(run, stripRows.length)}>
+      <PageTitle title={runTitle(run)} subline={<span role="status" aria-atomic="true">{subline(run, stripRows.length)}</span>}>
         {live && <Button variant="primary" disabled={cancel.isPending} onClick={() => cancel.mutate()}>Cancel run</Button>}
         {!live && isAdmin(me.data) && (
           <Confirm label="Delete" question="Delete this run and its screenshots?" onConfirm={() => remove.mutate()} />
@@ -65,15 +70,18 @@ export function Run() {
       {actionError && <p className="fail" role="alert">{actionError.message}</p>}
       <div className={styles.headline}>
         <Mascot mood={mood(run.status)} className={styles.mascot} />
-        <StatusTile status={run.status} size="figure" />
+        <div className={styles.status}>
+          <StatusTile status={run.status} size="figure" />
+          {run.flaky && <Tile tone="sun" className={styles.flaky}>flaky · passed on attempt {run.attempts}</Tile>}
+        </div>
         {modes.length
           ? <StepStrip modes={modes} onSelect={jump} />
-          : <Tile tone="ground" className={styles.waiting}>{live ? 'Waiting for the first step.' : 'No steps ran.'}</Tile>}
+          : <Tile tone="ground" className={styles.waiting}>{waiting(live, retried !== undefined)}</Tile>}
       </div>
       {run.error && <Tile className={styles.runError}><span className="fail">{errorText(run.error, ran)}</span></Tile>}
       {ran && (
         <div className={styles.columns}>
-          <div onMouseLeave={() => setSelected(undefined)}><EventLog events={events} onSelectShot={setSelected} /></div>
+          <div onMouseLeave={() => setSelected(undefined)}><EventLog events={events} status={run.status} onSelectShot={setSelected} /></div>
           <div className={styles.shot}><Screenshot runId={run.id} seq={selected ?? newestShot} /></div>
         </div>
       )}
@@ -82,17 +90,24 @@ export function Run() {
           <Table label="Assertions" columns={ASSERTION_COLUMNS} rows={assertions} rowKey={(a) => String(a.seq)} />
         </Board>
       )}
-      {(run.status === 'passed' || run.status === 'failed') && <Cost run={run} />}
+      {(run.status === 'passed' || run.status === 'failed') && run.kind !== 'crawl' && <Cost run={run} />}
       <Notes notes={events.filter((e): e is NoteEvent => e.kind === 'note')} />
     </>
   )
 }
 
 function subline(run: RunDoc, steps: number): string {
-  if (isLive(run.status)) return `${run.status} · ${count(steps, 'step')} so far`
-  const parts = [count(steps, 'step'), count(run.ai_calls ?? 0, 'AI call')]
+  const counted = count(steps, run.kind === 'crawl' ? 'page' : 'step')
+  if (isLive(run.status)) return `${run.status} · ${counted} so far`
+  const parts = [counted, count(run.ai_calls ?? 0, 'AI call')]
   if (run.total_ms != null) parts.push(duration(run.total_ms))
+  if (run.attempts && run.attempts > 1) parts.push(count(run.attempts, 'attempt'))
   return parts.join(' · ')
+}
+
+function waiting(live: boolean, retrying: boolean): string {
+  if (!live) return 'No steps ran.'
+  return retrying ? 'Retrying from step 1.' : 'Waiting for the first step.'
 }
 
 function mood(status: RunDoc['status']): Mood {

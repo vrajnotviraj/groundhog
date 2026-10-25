@@ -1,7 +1,7 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router'
-import { api, casesQuery, settingsHealthQuery } from '../api'
+import { anthropicKeySet, api, casesQuery, settingsHealthQuery } from '../api'
 import { Board } from '../layout/Board'
 import { Button } from '../forms/Button'
 import { CaseStack } from '../forms/CaseStack'
@@ -12,13 +12,12 @@ import { NAME_PATTERN } from '../format'
 import { useStartRun } from '../run/live'
 import form from '../styles/form.module.css'
 import type { FlowCase } from '../types'
-import styles from './NewFlow.module.css'
 
 export function NewFlow() {
   return (
     <>
       <PageTitle title="New flow" subline="A flow runs saved cases in order in one browser, then its cleanup." />
-      <Board className={styles.two}>
+      <Board title="Two ways to make a flow">
         <Compose />
         <ByHand />
       </Board>
@@ -30,7 +29,7 @@ function Compose() {
   const [intent, setIntent] = useState('')
   const health = useQuery(settingsHealthQuery)
   const compose = useStartRun(() => api.composeFlow({ intent }))
-  const keySet = health.data?.optional.find((o) => o.name.includes('ANTHROPIC'))?.set
+  const keySet = anthropicKeySet(health.data)
   const submit = (e: FormEvent) => {
     e.preventDefault()
     compose.mutate()
@@ -42,9 +41,18 @@ function Compose() {
         <textarea required rows={6} value={intent} onChange={(e) => setIntent(e.target.value)}
           placeholder="Create an SMS template, find it in the templates list, then delete it" />
       </Field>
-      {keySet === false && <p className="muted">Composing needs <code>ANTHROPIC_API_KEY</code> in <code>.env</code>.</p>}
       {compose.error && <p className="fail" role="alert">{compose.error.message}</p>}
-      <Button variant="primary" type="submit" disabled={keySet === false || compose.isPending}>Compose</Button>
+      <div className={form.actions}>
+        <Button variant="primary" type="submit" disabled={keySet === false || compose.isPending}
+          aria-describedby={keySet === false ? 'compose-needs-key' : undefined}>
+          Compose
+        </Button>
+        {keySet === false && (
+          <span id="compose-needs-key" className="small">
+            Composing needs <code>ANTHROPIC_API_KEY</code> in <code>.env</code>. <Button variant="text" to="/settings">Settings</Button>
+          </span>
+        )}
+      </div>
     </form>
   )
 }
@@ -74,10 +82,12 @@ function ByHand() {
         <input required pattern={NAME_PATTERN} value={name} onChange={(e) => setName(e.target.value)} />
       </Field>
       <Field label="Shared vars"><VarRows vars={vars} onChange={setVars} /></Field>
-      <CaseStack title="Chain" cases={chain} options={names} onChange={setChain} />
-      <CaseStack title="Cleanup" cases={cleanup} options={names} onChange={setCleanup} />
+      <div className="split">
+        <CaseStack title="Chain" cases={chain} options={names} onChange={setChain} />
+        <CaseStack title="Cleanup" cases={cleanup} options={names} onChange={setCleanup} />
+      </div>
       {save.error && <p className="fail" role="alert">{save.error.message}</p>}
-      <Button variant="primary" type="submit" disabled={!chain.length || save.isPending}>Save flow</Button>
+      <Button type="submit" disabled={!chain.length || save.isPending}>Save flow</Button>
     </form>
   )
 }
