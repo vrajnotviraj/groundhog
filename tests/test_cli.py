@@ -1,12 +1,18 @@
 """init's env/.env checks, its summary line and db seed, without a browser or network."""
 
+import re
+
 import pytest
 import typer
+from typer.testing import CliRunner
 
-from groundhog import cli, config, db, setup_checks
+from groundhog import cli, config, crawl, db, setup_checks
 from groundhog.api.passwords import verify_password
+from groundhog.browser import session as browser_session
 from groundhog.cases import store
 from groundhog.cases.schema import Case, Flow
+from groundhog.runner import replay
+from groundhog.runner.replay import RunResult
 
 EXAMPLE = (
     "BASE_URL=https://app.example.com\n"
@@ -194,3 +200,81 @@ def test_recorded_closes_any_other_exception_as_error_and_reraises(raised, error
         raise raised
     run = db.runs().find_one()
     assert (run["status"], run["error"]) == ("error", error)
+
+
+class FakeSession:
+    def __init__(self, headless=None):
+        self.ws = ""
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        pass
+
+    def ensure_logged_in(self):
+        self.ws = "FYTEST0001"
+
+
+def stub_replays(monkeypatch, outcomes: list[bool]) -> list:
+    """Replace the browser and the replay; return the (case, session, vars) of every replay."""
+    calls, results = [], iter(outcomes)
+
+    def fake_run_case(case, session, vars=None, heal=True):
+        calls.append((case.name, session, dict(vars)))
+        return RunResult(passed=next(results), total_ms=5)
+
+    monkeypatch.setattr(browser_session, "Session", FakeSession)
+    monkeypatch.setattr(replay, "run_case", fake_run_case)
+    return calls
+
+
+def test_run_with_two_names_shares_one_session_and_writes_a_run_per_case(monkeypatch):
+    for name in ("a", "b"):
+        store.save(Case(name=name, intent="open {{page}}", steps=[]))
+    calls = stub_replays(monkeypatch, [True, False])
+
+    result = CliRunner().invoke(cli.app, ["run", "a", "b", "--var", "page=home"])
+    assert result.exit_code == 1
+    assert len({id(session) for _, session, _ in calls}) == 1
+    assert sorted((r["target"], r["status"]) for r in db.runs().find()) == [("a", "passed"), ("b", "failed")]
+    assert len(re.findall(r"^run \w{12}$", result.output, re.M)) == 2
+
+
+def test_retry_emits_the_attempt_and_restamps_empty_vars(monkeypatch):
+    store.save(Case(name="a", intent="create {{name}}", steps=[]))
+    calls = stub_replays(monkeypatch, [False, True])
+    stamps = iter(["gh-1", "gh-2"])
+    monkeypatch.setattr(cli, "stamp", lambda run_id: next(stamps))
+
+    assert CliRunner().invoke(cli.app, ["run", "a", "--retries", "1"]).exit_code == 0
+    assert [v["name"] for _, _, v in calls] == ["gh-1", "gh-2"]
+    run = db.runs().find_one()
+    assert [e["n"] for e in run["events"] if e["kind"] == "attempt"] == [2]
+    assert (run["attempts"], run["flaky"], run["retries"], run["vars"]) == (2, True, 1, {"name": "gh-2"})
+
+
+def test_stamp_differs_between_runs_started_in_the_same_second():
+    first, second = cli.stamp("abcd12345678"), cli.stamp("ef0198765432")
+    assert re.fullmatch(r"gh-\d{6}-abcd", first) and first != second
+
+
+def test_crawl_records_a_crawl_run_and_refuses_a_bad_scope(monkeypatch):
+    monkeypatch.setattr(crawl, "crawl", lambda *a, **kw: {"pages": 2, "controls": 5})
+
+    assert CliRunner().invoke(cli.app, ["crawl", "--scope", "templates"]).exit_code == 2
+    assert db.runs().count_documents({}) == 0
+    assert CliRunner().invoke(cli.app, ["crawl", "--scope", "/templates"]).exit_code == 0
+    run = db.runs().find_one()
+    assert (run["kind"], run["target"], run["status"], run["pages"]) == ("crawl", "/templates", "passed", 2)
+
+
+def test_run_of_an_unknown_case_stops_before_the_browser(monkeypatch):
+    monkeypatch.setattr(browser_session, "Session", lambda **kw: pytest.fail("no browser for an unknown case"))
+    result = CliRunner().invoke(cli.app, ["run", "nope"])
+    assert result.exit_code == 1 and "no saved case named nope" in result.output
+
+
+def test_run_needs_a_name_or_all(monkeypatch):
+    stub_replays(monkeypatch, [])
+    assert CliRunner().invoke(cli.app, ["run"]).exit_code == 2

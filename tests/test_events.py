@@ -59,3 +59,13 @@ def test_a_decision_shows_runners_up_only_when_hesitant(capsys):
                 detail="ops WAIT=0.40 CLICK=0.35")
     out = capsys.readouterr().out
     assert "ops CLICK=0.95" not in out and "CLICK=0.35" in out
+
+
+def test_an_attempt_prints_the_retry_line(capsys):
+    events.emit("attempt", n=2)
+    assert "retry — attempt 2" in capsys.readouterr().out
+
+
+def test_a_page_prints_its_path_and_counts(capsys):
+    events.emit("page", path="/:ws/templates", title="Templates", controls=4, links=7, depth=1)
+    assert "crawl /:ws/templates · 4 controls · 7 links" in capsys.readouterr().out

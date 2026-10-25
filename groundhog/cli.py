@@ -36,13 +36,13 @@ def inventory() -> str:
 
 @contextmanager
 def recorded(run_id: str | None, kind: str, target: str, vars: dict, intent: str | None = None):
-    """Open a run document, close it as error if the command raises, and print the run id at the end."""
-    if not re.match(NAME, target):
+    """Open a run document and yield its id, close it as error if the command raises, and print the id at the end."""
+    if kind != "crawl" and not re.match(NAME, target):  # a crawl's target is a scope path
         console.print(f"[red]{escape(target)} is not a valid name: use lowercase letters, digits and dashes[/]")
         raise typer.Exit(2)
     run_id = events.start(run_id, kind, target, vars, intent)
     try:
-        yield
+        yield run_id
     except typer.Exit:
         raise
     except RuntimeError as e:
@@ -112,31 +112,71 @@ def init():
     raise typer.Exit(0 if all(results.values()) and login_ok else 1)
 
 
-@app.command()
-def run(name: str, var: list[str] = typer.Option([], help="template var, e.g. --var name=gh-test"),
-        no_heal: bool = typer.Option(False, help="fail instead of trying to heal a drifted step"),
-        headed: bool = typer.Option(False, help="show the browser"), run_id: str = RUN_ID):
-    """Replay a saved case. No AI calls unless a step has drifted."""
-    from groundhog.browser.session import Session
+def stamp(run_id: str) -> str:
+    """A value for a var the user left empty, unique across runs that start in the same second."""
+    return f"gh-{datetime.now(timezone.utc):%H%M%S}-{run_id[:4]}"
+
+
+def fill_missing(case, vars: dict[str, str], run_id: str) -> dict[str, str]:
+    """The vars plus a fresh stamp for each one the intent names but the user left empty, so no {{braces}} get typed."""
+    missing = store.missing_vars(case, vars)
+    if not missing:
+        return vars
+    value = stamp(run_id)
+    filled = vars | {m: value for m in missing}
+    events.record(vars=filled)
+    console.print("[dim]using " + " ".join(f"--var {m}={value}" for m in missing) + "[/]")
+    return filled
+
+
+def replay(name: str, session, vars: dict[str, str], heal: bool, retries: int, run_id: str | None) -> int:
+    """Replay one saved case as its own run, retrying a failure with fresh vars; return its exit code."""
     from groundhog.runner.replay import run_case
 
-    vars = parse_vars(var)
-    with recorded(run_id, "run", name, vars):
-        case = saved(store.load, name)
-        if missing := store.missing_vars(case, vars):
-            # Fill missing vars with a per-run value so no literal {{braces}} get typed.
-            stamp = datetime.now(timezone.utc).strftime("%H%M%S")
-            vars |= {m: f"gh-{stamp}" for m in missing}
-            events.record(vars=vars)
-            console.print("[dim]using " + " ".join(f"--var {m}=gh-{stamp}" for m in missing) + "[/]")
-        with Session(headless=not headed) as session:
-            session.ensure_logged_in()
-            result = run_case(case, session, vars=vars, heal=not no_heal)
+    try:
+        with recorded(run_id, "run", name, vars) as run_id:
+            case = saved(store.load, name)
+            if not session.ws:
+                session.ensure_logged_in()
+            for attempt in range(1, retries + 2):
+                if attempt > 1:
+                    events.emit("attempt", n=attempt)
+                result = run_case(case, session, vars=fill_missing(case, vars, run_id), heal=heal)
+                if result.passed:
+                    break
+            events.finish("passed" if result.passed else "failed", total_ms=result.total_ms,
+                          healed=result.healed, modes=[s.mode for s in result.steps],
+                          paths=sorted({s.path for s in result.steps} - {""}),
+                          attempts=attempt, flaky=result.passed and attempt > 1, retries=retries)
+            console.print(f"\n{verdict(result.passed)} in {result.total_ms}ms · {result.healed} healed")
+            return 0 if result.passed else 1
+    except typer.Exit as e:
+        return e.exit_code
 
-        events.finish("passed" if result.passed else "failed", total_ms=result.total_ms,
-                      healed=result.healed, modes=[s.mode for s in result.steps])
-        console.print(f"\n{verdict(result.passed)} in {result.total_ms}ms · {result.healed} healed")
-        raise typer.Exit(0 if result.passed else 1)
+
+@app.command()
+def run(names: list[str] = typer.Argument(None, help="saved case names", show_default=False),
+        all_cases: bool = typer.Option(False, "--all", help="run every saved case"),
+        var: list[str] = typer.Option([], help="template var, e.g. --var name=gh-test"),
+        no_heal: bool = typer.Option(False, help="fail instead of trying to heal a drifted step"),
+        retries: int = typer.Option(0, min=0, help="replay a failed case up to N more times with fresh vars"),
+        headed: bool = typer.Option(False, help="show the browser"), run_id: str = RUN_ID):
+    """Replay saved cases in one browser session. No AI calls unless a step has drifted."""
+    from groundhog.browser.session import Session
+
+    names = [c.name for c in store.list_cases()] if all_cases else names or []
+    if not names:
+        console.print("[red]name a saved case, or pass --all[/]")
+        raise typer.Exit(2)
+    if run_id and len(names) > 1:
+        console.print("[red]--run-id records one case: name exactly one[/]")
+        raise typer.Exit(2)
+    vars = parse_vars(var)
+    for name in names:
+        saved(store.load, name)
+    with Session(headless=not headed) as session:
+        codes = [replay(name, session, vars, not no_heal, retries, run_id) for name in names]
+    raise typer.Exit(max(codes))
 
 
 @app.command()
@@ -186,6 +226,23 @@ def show(name: str):
     console.print_json(json.dumps(saved(store.load, name).model_dump()))
 
 
+@app.command()
+def crawl(scope: str = typer.Option("/", help="path inside the workspace to stay under, e.g. /templates"),
+          max_pages: int = typer.Option(config.CRAWL_MAX_PAGES, min=1, help="stop after this many pages"),
+          headed: bool = typer.Option(False, help="show the browser"), run_id: str = RUN_ID):
+    """Map the app's pages by following links. Never clicks a control, makes no AI calls."""
+    from groundhog import crawl as crawler
+
+    if not re.match(r"^/\S{0,200}$", scope):
+        console.print(f"[red]{escape(scope)} is not a scope: use a path such as / or /templates[/]")
+        raise typer.Exit(2)
+    clock = time.monotonic()
+    with recorded(run_id, "crawl", scope, {}) as run_id:
+        counts = crawler.crawl(scope, max_pages, headless=not headed, run_id=run_id)
+        events.finish("passed", total_ms=int((time.monotonic() - clock) * 1000), **counts)
+        console.print(f"\n{verdict(True)} {counts['pages']} pages · {counts['controls']} controls")
+
+
 @flow_app.command("run")
 def flow_run(name: str, var: list[str] = typer.Option([], help="shared template var, e.g. --var name=gh-test"),
              no_heal: bool = typer.Option(False, help="fail instead of trying to heal a drifted step"),
@@ -203,7 +260,8 @@ def flow_run(name: str, var: list[str] = typer.Option([], help="shared template 
 
         ran = [cr.result for cr in result.runs if cr.result]
         events.finish("passed" if result.passed else "failed", total_ms=result.total_ms,
-                      healed=sum(r.healed for r in ran), modes=[s.mode for r in ran for s in r.steps])
+                      healed=sum(r.healed for r in ran), modes=[s.mode for r in ran for s in r.steps],
+                      paths=sorted({s.path for r in ran for s in r.steps} - {""}))
         console.print(f"\n{verdict(result.passed)} in {result.total_ms}ms · {len(result.runs)} case(s)")
         raise typer.Exit(0 if result.passed else 1)
 

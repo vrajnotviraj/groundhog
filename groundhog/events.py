@@ -104,3 +104,7 @@ def _print(e: dict) -> None:
         style = LEVEL_STYLE.get(e["level"], "")
         text = escape(e["text"])
         console.print(f"[{style}]{text}[/]" if style else text, highlight=False)
+    elif kind == "attempt":
+        console.print(f"\n[yellow]retry — attempt {e['n']}[/]")
+    elif kind == "page":
+        console.print(f"  crawl {escape(e['path'])} · {e['controls']} controls · {e['links']} links")

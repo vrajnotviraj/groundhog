@@ -62,4 +62,6 @@ def run_flow(name: jobs.PathName, body: jobs.RunRequest, user: dict = Depends(cu
         store.load_flow(name)
     except KeyError:
         raise HTTPException(404, f"No flow named {name}.")
+    if body.retries:
+        raise HTTPException(422, "A flow does not retry; run it again instead.")
     return {"run_id": jobs.start("flow", name, ["flow", "run", name, *jobs.run_flags(body)], user)}

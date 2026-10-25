@@ -42,7 +42,9 @@ def health() -> dict:
     return {
         "checks": [as_row(*check) for check in setup_checks.all_checks()],
         "optional": [{"name": "ANTHROPIC_API_KEY", "set": bool(config.ANTHROPIC_API_KEY),
-                      "note": "Unlocks composing flows from English and writing field values the intent leaves out."}],
+                      "note": "Unlocks composing flows from English, suggesting tests and writing field values "
+                              "the intent leaves out."}],
+        "workers": config.MAX_WORKERS,
     }
 
 

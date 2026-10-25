@@ -24,11 +24,22 @@ class AuthorCase(BaseModel):
     headed: bool = False
 
 
+def health(name: str, case: dict) -> dict:
+    """Outcomes and average duration of the case's last 10 finished replays, oldest first, and its heals."""
+    query = {"target": name, "kind": "run", "status": {"$in": ["passed", "failed", "error"]}}
+    runs = list(db.runs().find(query, {"status": 1, "flaky": 1, "total_ms": 1}).sort("created_at", -1).limit(10))[::-1]
+    durations = [r["total_ms"] for r in runs if r.get("total_ms") is not None]
+    return {"runs": len(runs), "passed": sum(r["status"] == "passed" for r in runs),
+            "flaky": sum(bool(r.get("flaky")) for r in runs),
+            "avg_ms": sum(durations) // len(durations) if durations else None, "heals": len(case["meta"]["heals"]),
+            "history": [{"id": r["_id"], "status": r["status"], "flaky": bool(r.get("flaky"))} for r in runs]}
+
+
 @router.get("")
 def list_cases() -> list[dict]:
     return [{"name": c["_id"], "intent": c["intent"], "steps": len(c["steps"]), "runs": c["meta"]["runs"],
              "heals": len(c["meta"]["heals"]), "start_path": c["start_path"], "updated_at": c.get("updated_at"),
-             "last_run": next(iter(recent(c["_id"], RUN_KINDS, 1)), None)}
+             "last_run": next(iter(recent(c["_id"], RUN_KINDS, 1)), None), "health": health(c["_id"], c)}
             for c in db.cases().find().sort("_id")]
 
 
@@ -37,7 +48,7 @@ def get_case(name: jobs.PathName) -> dict:
     case = db.cases().find_one({"_id": name}, {"_id": 0})
     if case is None:
         raise HTTPException(404, f"No case named {name}.")
-    return {**case, "runs": recent(name, RUN_KINDS, 10)}
+    return {**case, "runs": recent(name, RUN_KINDS, 10), "health": health(name, case)}
 
 
 @router.put("/{name}")

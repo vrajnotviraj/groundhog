@@ -40,6 +40,12 @@ ACTION_PROBE_MS = int(os.environ.get("ACTION_PROBE_MS", "2000"))
 READINESS_POLL_MS = int(os.environ.get("READINESS_POLL_MS", "250"))
 EXECUTOR_MAX_ACTIONS = int(os.environ.get("EXECUTOR_MAX_ACTIONS", "40"))
 
+# How many runs the console runs at once; the rest wait as queued.
+MAX_WORKERS = int(os.environ.get("MAX_WORKERS", "3"))
+# Crawl bounds: pages stored per crawl and link hops from the scope's root.
+CRAWL_MAX_PAGES = int(os.environ.get("CRAWL_MAX_PAGES", "40"))
+CRAWL_MAX_DEPTH = int(os.environ.get("CRAWL_MAX_DEPTH", "4"))
+
 # Noul probability a "jev" assertion needs to pass; also the DONE gate.
 JUDGE_THRESHOLD = float(os.environ.get("JUDGE_THRESHOLD", "0.6"))
 # Target probability a heal needs before its selector is accepted.

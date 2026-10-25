@@ -8,7 +8,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from groundhog import config, db
-from groundhog.api import auth, cases, flows, jobs, runs, settings
+from groundhog.api import auth, cases, flows, jobs, map, runs, settings, suggestions
 
 WEB_DIST = config.ROOT / "web" / "dist"
 
@@ -34,7 +34,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="groundhog", lifespan=lifespan)
 app.middleware("http")(auth.reject_foreign_origin)
-for module in (auth, cases, flows, runs, settings):
+for module in (auth, cases, flows, map, runs, settings, suggestions):
     app.include_router(module.router, prefix="/api")
 
 

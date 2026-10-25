@@ -1,4 +1,7 @@
-"""The Mongo collections: cases, flows, runs, screenshots, users and sessions. Connects on first use."""
+"""The Mongo collections: cases, flows, runs, screenshots, users, sessions, crawled pages and suggested tests.
+
+Connects on first use.
+"""
 
 from pymongo import ASCENDING, DESCENDING, MongoClient
 
@@ -38,6 +41,14 @@ def sessions():
     return database()["sessions"]
 
 
+def pages():
+    return database()["pages"]
+
+
+def suggestions():
+    return database()["suggestions"]
+
+
 def ping() -> bool:
     """True when Mongo answers."""
     try:
@@ -53,3 +64,6 @@ def ensure_indexes() -> None:
     shots().create_index([("run_id", ASCENDING), ("seq", ASCENDING)], unique=True)
     users().create_index("email", unique=True)
     sessions().create_index("expires_at", expireAfterSeconds=0)
+    pages().create_index("section")
+    suggestions().create_index("status")
+    suggestions().create_index([("created_at", DESCENDING)])
