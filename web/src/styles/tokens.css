@@ -1,4 +1,10 @@
-/* Colour, type and spacing tokens. */
+/* Hallmark · shape: app screen · genre: modern-minimal · theme: brand · redesign: full
+ * paper: oklch(91% 0.013 87) · accent: oklch(84% 0.168 90) · display: Albert Sans · body: Albert Sans
+ * nav: kept (the ink top bar) · signature: the run strip, one square per step in its outcome tone · states: loading, empty, error, full
+ * axes: light/grotesk-sans/warm · posture: settled · contrast: pass · surface: absolute (brand white on fail and pass tiles) · v2.0.0 */
+/* Hallmark · pre-emit critique: P4 H4 E4 S5 R4 V3 · weakest: V, the brand board fixes palette, face and tiles; the variety lives in each screen's lead object instead */
+/* Hallmark · waive 7b · --gh-fail-ink and --gh-accent-ink are #FFFFFF in assets/design-tokens.css · the brand file names white as the text on its fail and pass tiles, so the console keeps it */
+/* Colour, type and spacing tokens. Colour values are the brand's (assets/design-tokens.css). */
 :root {
   /* colour */
   --gh-ground: #E5E1D8;
@@ -9,9 +15,10 @@
   --gh-ink-text: #E5E1D8;
   --gh-accent: #3D6433;
   --gh-accent-ink: #FFFFFF;
+  --gh-pass: var(--gh-accent);
   --gh-fail: #A8231B;
   --gh-fail-ink: #FFFFFF;
-  /* sun: primary action, live runs, healed steps */
+  /* sun: the one primary action, live runs, healed steps */
   --gh-sun: #F5C518;
   --gh-sun-hover: #FFD43B;
   --gh-sun-ink: #2A1D17;
@@ -23,26 +30,44 @@
   --gh-accent-hover: #34572C;
   --gh-fail-hover: #921E17;
 
-  /* type */
-  --gh-font: "Albert Sans", system-ui, sans-serif;
-  --gh-code: "JetBrains Mono", ui-monospace, monospace; /* taste-skill-ignore: the code face, used only by <code> */
-  --gh-display: 600 48px/1.02 var(--gh-font);
-  --gh-title: 600 24px/1.25 var(--gh-font);
-  --gh-section: 500 16px/1.45 var(--gh-font);
-  --gh-figure: 500 36px/1.1 var(--gh-font);
-  --gh-body: 400 15px/1.45 var(--gh-font);
-  --gh-small: 400 13px/1.45 var(--gh-font);
-  --gh-mono: 400 13px/1.45 var(--gh-code);
+  /* the focus ring: green on bone, sun on ink */
+  --gh-focus: var(--gh-accent);
+  --gh-focus-on-ink: var(--gh-sun);
 
-  /* shape and motion */
-  --gh-radius: 4px;
+  /* type: Albert Sans for everything, one fixed scale at 1.125 (14 16 18 20 23 26 29 32 36 41) */
+  --gh-font: "Albert Sans", system-ui, sans-serif;
+  --gh-code: "JetBrains Mono", ui-monospace, monospace; /* taste-skill-ignore: the code face, used only for selectors and paths */
+  --gh-display: 600 41px/1.05 var(--gh-font);
+  --gh-title: 600 26px/1.2 var(--gh-font);
+  --gh-section: 600 18px/1.35 var(--gh-font);
+  --gh-lead: 400 18px/1.45 var(--gh-font);
+  --gh-figure: 500 32px/1.1 var(--gh-font);
+  --gh-body: 400 16px/1.5 var(--gh-font);
+  --gh-small: 400 14px/1.45 var(--gh-font);
+  --gh-mono: 400 14px/1.45 var(--gh-code);
+  --gh-tracking-head: -0.02em;
+
+  /* space: 4 8 12 16 24 32 48 */
   --gh-gap: 8px;
+  --gh-seam: 2px;
   --gh-pad: 16px;
-  --gh-row: 44px;
+  --gh-pad-row: 12px;
+  --gh-section-gap: 32px;
+
+  /* shape: 4px on tiles, 2px on anything inside a tile */
+  --gh-radius: 4px;
+  --gh-radius-inner: 2px;
+
+  /* density */
+  --gh-row: 40px;
   --gh-bar: 56px;
   --gh-control: 36px;
-  --gh-input: 40px;
+  --gh-input: 36px;
   --gh-column: 1200px;
+
+  /* motion is state: micro for hover and press, short for a change of view */
   --gh-motion: 150ms;
+  --gh-motion-short: 220ms;
+  --gh-ease: cubic-bezier(0.16, 1, 0.3, 1);
   --gh-spring: cubic-bezier(.34, 1.56, .64, 1);
 }

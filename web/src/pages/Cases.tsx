@@ -63,10 +63,10 @@ export function Cases() {
       ),
     },
     { header: 'Name', role: 'identity', width: 'minmax(0, 2fr)', cell: (c) => <Name c={c} /> },
+    { header: 'Last 10', width: 'minmax(204px, 1.2fr)', cell: (c) => <Health c={c} /> },
     { header: 'Intent', role: 'secondary', width: 'minmax(0, 3fr)', cell: (c) => <Intent text={c.intent} /> },
     { header: 'Steps', width: '72px', align: 'end', role: 'key', cell: (c) => count(c.steps, 'step') },
-    { header: 'Last 10', width: 'minmax(176px, 1.5fr)', cell: (c) => <Health c={c} /> },
-    { header: 'Avg', width: '64px', align: 'end', cell: (c) => duration(c.health.avg_ms ?? undefined) },
+    { header: 'Avg', width: '64px', align: 'end', role: 'key', cell: (c) => c.health.avg_ms != null && duration(c.health.avg_ms) },
     {
       header: 'Run', width: '80px', role: 'action',
       cell: (c) => (queued[c.name] && isLive(statusOf(queued[c.name]))
@@ -79,8 +79,6 @@ export function Cases() {
   return (
     <>
       <PageTitle title="Cases" subline={cases.data && (term ? `${shown.length} of ${count(all.length, 'case')}` : count(all.length, 'case'))}>
-        <input type="search" className={styles.search} aria-label="Search cases" placeholder="Search name or intent"
-          value={search} onChange={(e) => setSearch(e.target.value)} />
         <Button variant="text" to="/coverage/suggestions">Suggest tests</Button>
         {all.length > 0 && (
           <Confirm variant="primary" label="Run all" confirmLabel={`Run ${count(all.length, 'case')}`}
@@ -89,13 +87,19 @@ export function Cases() {
         )}
         <Button variant="primary" to="/cases/new">New case</Button>
       </PageTitle>
+      {all.length > 0 && (
+        <div className={styles.toolbar}>
+          <input type="search" className={styles.search} aria-label="Search cases" placeholder="Search name or intent"
+            value={search} onChange={(e) => setSearch(e.target.value)} />
+        </div>
+      )}
       {error && <p className="fail" role="alert">{error.message}</p>}
       {cases.isError && <LoadError what="the cases" onRetry={cases.refetch} />}
       {cases.isPending && <LoadingRows />}
       {cases.data && !all.length && (
         <Empty>
           No cases yet. Describe one in English, or let Groundhog suggest some from your docs.{' '}
-          <Button variant="text" to="/cases/new">New case</Button> · <Button variant="text" to="/coverage/suggestions">Suggest tests</Button>
+          <Button variant="text" to="/cases/new">New case</Button> or <Button variant="text" to="/coverage/suggestions">Suggest tests</Button>
         </Empty>
       )}
       {all.length > 0 && !shown.length && <Empty mood="worried">No case matches "{search}".</Empty>}
@@ -126,16 +130,16 @@ export function Cases() {
 // The case's link, then a sun tag for heals and for flaky runs.
 function Name({ c }: { c: CaseSummary }) {
   return (
-    <>
+    <span className={styles.name}>
       <Link to={`/cases/${c.name}`}>{c.name}</Link>
-      {c.heals > 0 && <span className={styles.tag}>{count(c.heals, 'heal')}</span>}
-      {c.health.flaky > 0 && <span className={styles.tag}>{c.health.flaky} flaky</span>}
-    </>
+      {c.heals > 0 && <span className="tag sun">{count(c.heals, 'heal')}</span>}
+      {c.health.flaky > 0 && <span className="tag sun">{c.health.flaky} flaky</span>}
+    </span>
   )
 }
 
 // The intent with each {{var}} set as code; the full text shows on hover.
-function Intent({ text }: { text: string }) {
+export function Intent({ text }: { text: string }) {
   return <span title={text}>{text.split(/(\{\{\s*\w+\s*\}\})/).map((part, i) => (i % 2 ? <code key={i}>{part}</code> : part))}</span>
 }
 

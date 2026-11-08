@@ -10,6 +10,7 @@ import { Table, type Column } from '../table/Table'
 import { count } from '../format'
 import { useStartRun } from '../run/live'
 import type { FlowCase, FlowSummary } from '../types'
+import styles from './Flows.module.css'
 
 const sentence = (cases: FlowCase[]) => cases.map((c) => c.case).join(', then ') || '-'
 
@@ -22,18 +23,25 @@ export function Flows() {
   const steps = (f: FlowSummary) => [...f.chain, ...f.cleanup].reduce((sum, c) => sum + (stepsOf.get(c.case) ?? 0), 0)
 
   const columns: Column<FlowSummary>[] = [
-    { header: 'Name', role: 'identity', width: 'minmax(0, 1.5fr)', cell: (f) => <Link to={`/flows/${f.name}`}>{f.name}</Link> },
     {
-      header: 'Cases', role: 'secondary', width: 'minmax(0, 3fr)',
-      cell: (f) => <>{sentence(f.chain)}{f.cleanup.length > 0 && <span className="muted">; cleanup {sentence(f.cleanup)}</span>}</>,
+      // the chain is what a flow is, so it reads under the name instead of in its own column
+      header: 'Flow', role: 'identity', width: 'minmax(0, 2fr)',
+      cell: (f) => (
+        <>
+          <Link to={`/flows/${f.name}`}>{f.name}</Link>
+          <span className={styles.chain}>
+            {sentence(f.chain)}{f.cleanup.length > 0 && <>; cleanup {sentence(f.cleanup)}</>}
+          </span>
+        </>
+      ),
     },
-    { header: 'Steps', width: '72px', align: 'end', role: 'key', cell: (f) => (cases.data ? count(steps(f), 'step') : '-') },
+    { header: 'Steps', width: '88px', align: 'end', role: 'key', cell: (f) => (cases.data ? count(steps(f), 'step') : '-') },
     {
-      header: 'Last run', width: 'minmax(136px, 1.5fr)',
+      header: 'Last run', width: 'minmax(136px, 316px)',
       cell: (f) => <LastRun run={f.last_run} />,
     },
     {
-      header: 'Run', width: '40px', role: 'action',
+      header: 'Run', width: '48px', role: 'action',
       cell: (f) => <Button variant="text" disabled={run.isPending && run.variables === f.name} onClick={() => run.mutate(f.name)}>Run</Button>,
     },
   ]

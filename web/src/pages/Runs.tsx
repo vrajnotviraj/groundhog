@@ -2,12 +2,14 @@ import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import { useSearchParams } from 'react-router'
 import { api } from '../api'
+import { Board } from '../layout/Board'
 import { Button } from '../forms/Button'
 import { Empty } from '../mascot/Empty'
 import { Field } from '../forms/Field'
 import { LoadError, LoadingRows } from '../mascot/Loading'
 import { PageTitle } from '../layout/PageTitle'
 import { RunTable } from '../run/RunTable'
+import { isLive } from '../run/live'
 import { Select } from '../forms/Select'
 import { count } from '../format'
 import styles from './Runs.module.css'
@@ -35,6 +37,9 @@ export function Runs() {
     refetchInterval: 3000, // picks up runs started from the CLI
   })
   const filtered = Boolean(kind || status || target.trim())
+  // live runs lead; the rest keep their newest-first order
+  const live = runs.data?.filter((r) => isLive(r.status)) ?? []
+  const done = runs.data?.filter((r) => !isLive(r.status)) ?? []
 
   return (
     <>
@@ -51,9 +56,12 @@ export function Runs() {
       {runs.data && !runs.data.length && (
         filtered ? <Empty mood="worried">No runs match these filters.</Empty> : <Empty>No runs yet. Run a case to see it here.</Empty>
       )}
-      {runs.data && runs.data.length > 0 && <RunTable runs={runs.data} />}
+      {live.length > 0 && (
+        <Board title="In progress"><RunTable runs={live} label="Runs in progress" /></Board>
+      )}
+      {done.length > 0 && (live.length > 0 ? <Board title="Finished"><RunTable runs={done} label="Finished runs" /></Board> : <RunTable runs={done} />)}
       {runs.data?.length === limit && (
-        <Button className={styles.more} onClick={() => setLimit(limit + PAGE)}>Load {PAGE} more (showing {limit})</Button>
+        <Button variant="secondary" className={styles.more} onClick={() => setLimit(limit + PAGE)}>Load {PAGE} more (showing {limit})</Button>
       )}
     </>
   )

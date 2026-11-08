@@ -2,7 +2,6 @@
 .small .tile { width: 12px; height: 12px; border-radius: 2px; }
 
 .large { display: flex; flex-wrap: wrap; gap: 4px; padding: 0; list-style: none; }
-.large li { animation: drop 450ms var(--gh-spring) both; }
 .large .tile { display: block; width: 24px; height: 24px; border-radius: 2px; transition: background-color var(--gh-motion) ease-out; }
 
 .empty { background: var(--gh-ground); }
@@ -14,5 +13,4 @@
 .large .flaky:hover, .large .live:hover { background: var(--gh-sun-hover); }
 .large .failed:hover { background: var(--gh-fail-hover); }
 
-@keyframes drop { from { opacity: 0; transform: translateY(-14px); } }
 @keyframes blink { 50% { opacity: 0.45; } }

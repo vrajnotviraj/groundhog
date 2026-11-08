@@ -31,8 +31,8 @@ export function HistoryStrip({ runs, size = 'small', slots = 0, label }: Props) 
   }
   return (
     <ol className={styles.large} aria-label={label ?? summary(runs)}>
-      {runs.map((run, i) => (
-        <li key={run.id} style={{ animationDelay: `${i * 40}ms` }}>
+      {runs.map((run) => (
+        <li key={run.id}>
           <Link to={`/runs/${run.id}`} className={`${styles.tile} ${styles[tone(run)]}`}
             title={describe(run)} aria-label={describe(run)} />
         </li>

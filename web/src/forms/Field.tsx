@@ -12,9 +12,9 @@ interface Props {
 export function Field({ label, hint, className = '', children }: Props) {
   return (
     <label className={`${styles.field} ${className}`}>
-      <span className="small muted">{label}</span>
+      <span className={styles.label}>{label}</span>
       {children}
-      {hint && <span className="small muted">{hint}</span>}
+      {hint && <span className={styles.hint}>{hint}</span>}
     </label>
   )
 }

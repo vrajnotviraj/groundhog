@@ -1,5 +1,4 @@
 import { count, duration } from '../format'
-import { Tile, type Tone } from '../layout/Tile'
 import type {
   ActionEvent, AttemptEvent, CaseEvent, DecisionEvent, Mode, PageEvent, RunEvent, Status, StepEvent,
 } from '../types'
@@ -58,7 +57,7 @@ interface Props {
   onSelectShot: (seq: number) => void
 }
 
-// The run page's rows grouped by case; earlier attempts collapse above the final one.
+// The run page's rows, one seamed block per case; earlier attempts collapse above the final one.
 export function EventLog({ events, status, onSelectShot }: Props) {
   const groups = groupEvents(events)
   const final = lastAttempt(events)?.n ?? 1
@@ -70,8 +69,8 @@ export function EventLog({ events, status, onSelectShot }: Props) {
         <Attempt key={n} n={n} groups={groups.filter((g) => g.attempt === n)} onSelectShot={onSelectShot} />
       ))}
       {earlier.length > 0 && (
-        <div className={styles.case}>
-          <Tile tone="surface-2" className={styles.caseName}>Attempt {final}</Tile>
+        <div className={`${styles.case} ${styles.attemptHead}`}>
+          <span className={styles.caseName}>Attempt {final}</span>
           <StatusTile status={finalGroups.some((g) => g.start) ? statusOf(finalGroups) : status} />
         </div>
       )}
@@ -94,7 +93,7 @@ interface GroupProps {
   earlier?: boolean
 }
 
-// One case's rows; an earlier attempt's rows sit on ground with muted text, all but its failed step.
+// One case's rows on 2px seams under its header; an earlier attempt's rows are muted, all but its failed step.
 function CaseGroup({ group, onSelectShot, earlier = false }: GroupProps) {
   return (
     <div className={styles.group}>
@@ -112,12 +111,10 @@ function Attempt({ n, groups, onSelectShot }: { n: number; groups: Group[]; onSe
   const failed = steps.find((s) => s.mode === 'failed')
   return (
     <details className={styles.attempt}>
-      <summary className={styles.row}>
-        <Tile tone="fail" className={styles.kind}>Attempt {n}</Tile>
-        <Tile tone="ground" className={styles.body}>
-          <span>{failed ? `Failed at step ${failed.i} of ${steps.length}` : `Failed after ${count(steps.length, 'step')}`}</span>
-          {failed?.error && <span className={`small fail ${styles.wide} ${styles.clip}`}>{failed.error}</span>}
-        </Tile>
+      <summary className={styles.summary}>
+        <span className="marker fail">Attempt {n}</span>
+        <span>{failed ? `Failed at step ${failed.i} of ${steps.length}` : `Failed after ${count(steps.length, 'step')}`}</span>
+        {failed?.error && <span className={`small fail ${styles.clip}`}>{failed.error}</span>}
       </summary>
       {groups.map((group) => <CaseGroup key={group.start?.seq ?? 0} group={group} onSelectShot={onSelectShot} earlier />)}
     </details>
@@ -129,65 +126,66 @@ function CaseHeader({ start, end }: { start: CaseEvent; end?: CaseEvent }) {
   if (end) status = end.passed ? 'passed' : 'failed'
   return (
     <div className={styles.case}>
-      <Tile tone="surface-2" className={styles.caseName}>
+      <div className={styles.caseName}>
         <span>{start.case}</span>
-        {start.stage === 'cleanup' && <span className="small">cleanup</span>}
-      </Tile>
+        {start.stage === 'cleanup' && <span className="tag">cleanup</span>}
+      </div>
       <StatusTile status={status} />
     </div>
   )
 }
 
-const MODE_TONE: Record<Mode, Tone> = {
-  static: 'surface', fallback: 'surface-2', healed: 'sun', failed: 'fail', skipped: 'ground',
+// The square before a row, in the same tones as the step strip; decisions have none.
+function Square({ mode, dim, children }: { mode?: Mode; dim: boolean; children?: number }) {
+  if (!mode) return <span />
+  return <span className={`${styles.square} ${styles[dim ? 'skipped' : mode]}`}>{children}</span>
 }
 
 function EventRow({ row, earlier, onSelect }: { row: Row; earlier: boolean; onSelect: () => void }) {
   const { event } = row
-  if (event.kind === 'step') return <StepRow step={event} dim={earlier && event.mode !== 'failed'} onSelect={onSelect} />
-  let tone: Tone = 'surface'
-  if (earlier) tone = 'ground'
-  else if (event.kind === 'decision' || event.kind === 'page') tone = 'surface-2'
-  else if (!event.ok) tone = 'fail'
+  const dim = earlier && !(event.kind === 'step' ? event.mode === 'failed' : event.kind === 'action' && !event.ok)
+  let mode: Mode | undefined
+  if (event.kind === 'step') mode = event.mode
+  else if (event.kind === 'action') mode = event.ok ? 'static' : 'failed'
+  else if (event.kind === 'page') mode = 'static'
+  const quiet = dim || (event.kind === 'step' && event.mode === 'skipped')
   return (
-    <div id={`event-${event.seq}`} className={styles.row} tabIndex={0} onMouseEnter={onSelect} onFocus={onSelect}>
-      <Tile tone={tone} className={styles.kind}>
-        {event.kind}
-      </Tile>
-      <Tile tone={earlier ? 'ground' : 'surface'} className={earlier ? `${styles.body} muted` : styles.body}>
-        {event.kind === 'decision' && <Decision event={event} />}
-        {event.kind === 'action' && <Action event={event} />}
-        {event.kind === 'page' && <Page event={event} />}
-      </Tile>
+    <div id={`event-${event.seq}`} className={`${styles.row} ${quiet ? styles.quiet : ''}`} tabIndex={0}
+      onMouseEnter={onSelect} onFocus={onSelect}>
+      <Square mode={mode} dim={dim}>{event.kind === 'step' ? event.i : undefined}</Square>
+      {event.kind === 'step' && <Step step={event} />}
+      {event.kind === 'decision' && <Decision event={event} />}
+      {event.kind === 'action' && <Action event={event} />}
+      {event.kind === 'page' && <Page event={event} />}
     </div>
   )
 }
 
-// One replayed step: its number in the mode's tone, what it did, the selector and how long it took.
-// The mode is spelled out only when it is not static.
-function StepRow({ step, dim, onSelect }: { step: StepEvent; dim: boolean; onSelect: () => void }) {
+// One replayed step: what it did, the selector, its mode when not static, and how long it took.
+function Step({ step }: { step: StepEvent }) {
   return (
-    <div id={`event-${step.seq}`} className={`${styles.row} ${styles.step}`} tabIndex={0} onMouseEnter={onSelect} onFocus={onSelect}>
-      <Tile tone={dim ? 'ground' : MODE_TONE[step.mode]} className={styles.kind}>{step.i}</Tile>
-      <Tile tone={dim ? 'ground' : 'surface'} className={dim ? `${styles.stepBody} muted` : styles.stepBody}>
-        <span className={styles.text}>
-          <span>{step.description}{step.drift && <span className="muted"> (drift)</span>}</span>
-          {step.selector && <code className="muted">{step.selector}</code>}
-          {step.mode !== 'static' && <span className="small">{step.mode}</span>}
-          {step.error && <span className="small fail">{step.error}</span>}
+    <>
+      <span className={styles.text}>
+        <span>
+          {step.description}{step.drift && <span className="muted"> (drift)</span>}
+          {step.mode !== 'static' && <> <span className={step.mode === 'healed' ? 'tag sun' : 'tag'}>{step.mode}</span></>}
         </span>
-        <span className={styles.ms}>{duration(step.ms)}</span>
-      </Tile>
-    </div>
+        {step.selector && <code className="muted">{step.selector}</code>}
+        {step.error && <span className="small fail">{step.error}</span>}
+      </span>
+      <span className={styles.meta}>{step.ms != null && duration(step.ms)}</span>
+    </>
   )
 }
 
 function Decision({ event }: { event: DecisionEvent }) {
   return (
     <>
-      <span>{event.operation.toLowerCase()} <strong>{event.label}</strong></span>
-      <span className="muted">p {event.probability.toFixed(2)} · {event.latency_ms}ms</span>
-      {event.probability < 0.7 && event.detail && <span className={`small muted ${styles.wide}`}>{event.detail}</span>}
+      <span className={styles.text}>
+        <span><span className="tag">decision</span> {event.operation.toLowerCase()} <strong>{event.label}</strong></span>
+        {event.probability < 0.7 && event.detail && <span className="small muted">{event.detail}</span>}
+      </span>
+      <span className={styles.meta}>p {event.probability.toFixed(2)}, {event.latency_ms}ms</span>
     </>
   )
 }
@@ -199,7 +197,7 @@ function Page({ event }: { event: PageEvent }) {
         <span>{event.title}</span>
         <code className="muted">{event.path}</code>
       </span>
-      <span className="muted">{count(event.controls, 'control')} · {count(event.links, 'link')}</span>
+      <span className={styles.meta}>{count(event.controls, 'control')} · {count(event.links, 'link')}</span>
     </>
   )
 }
@@ -207,9 +205,11 @@ function Page({ event }: { event: PageEvent }) {
 function Action({ event }: { event: ActionEvent }) {
   return (
     <>
-      <span>{event.description}{event.value && <span className="muted"> {event.value}</span>}</span>
-      <span className="muted">{event.action}</span>
-      {event.error && <span className={`small fail ${styles.wide}`}>{event.error}</span>}
+      <span className={styles.text}>
+        <span>{event.description}{event.value && <span className="muted"> {event.value}</span>}</span>
+        {event.error && <span className="small fail">{event.error}</span>}
+      </span>
+      <span className={styles.meta}>{event.action}</span>
     </>
   )
 }

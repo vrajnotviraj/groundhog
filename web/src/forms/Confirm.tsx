@@ -18,7 +18,7 @@ export function Confirm({ label, question, onConfirm, variant = 'destructive', c
   if (!asking) return <Button variant={trigger} onClick={() => setAsking(true)}>{label}</Button>
   return (
     <span className={styles.confirm} role="group" aria-label={question}>
-      <span>{question}</span>
+      <span className={styles.question}>{question}</span>
       <Button variant={variant} onClick={() => { setAsking(false); onConfirm() }}>{confirmLabel}</Button>
       <Button variant="text" onClick={() => setAsking(false)}>Keep</Button>
     </span>

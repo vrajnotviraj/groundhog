@@ -32,9 +32,11 @@ export function Login() {
         <p className={styles.pitch}>Same steps, every day. Zero AI until something drifts.</p>
       </Mascot>
       <form className={`tile ${form.panel} ${styles.form}`} onSubmit={submit}>
-        <h1 className={styles.wordmark}>groundhog</h1>
-        <div className={styles.fields}>
+        <div className={styles.head}>
+          <h1 className={styles.wordmark}>groundhog</h1>
           <p className="muted">Sign in to see what your cases did.</p>
+        </div>
+        <div className={styles.fields}>
           <Field label="Email">
             <input type="email" autoComplete="username" required value={email} aria-describedby={described}
               onChange={(e) => setEmail(e.target.value)} />

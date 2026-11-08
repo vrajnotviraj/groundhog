@@ -1,0 +1,4 @@
+/* Compose (the sun action, on a surface panel) beside the hand-built form on the ground; stacked under 900px. */
+.ways { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: var(--gh-section-gap); align-items: start; margin-top: 8px; }
+.hand { max-width: none; padding-top: var(--gh-pad); }
+@media (max-width: 899px) { .ways { grid-template-columns: minmax(0, 1fr); } }

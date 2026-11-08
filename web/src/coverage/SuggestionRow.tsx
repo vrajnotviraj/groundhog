@@ -3,7 +3,6 @@ import { Link } from 'react-router'
 import { api } from '../api'
 import { Button } from '../forms/Button'
 import { StatusTile } from '../run/StatusTile'
-import { Tile } from '../layout/Tile'
 import { ago } from '../format'
 import { isLive, useStartRun } from '../run/live'
 import type { Suggestion } from '../types'
@@ -30,7 +29,7 @@ interface Props {
   onSelect: (checked: boolean) => void
 }
 
-// One suggestion as three tiles: select, the test idea, and what to do with it.
+// One suggestion as one row of the list: select, the test idea, and what to do with it.
 export function SuggestionRow({ suggestion: s, selected, onSelect }: Props) {
   const queryClient = useQueryClient()
   const author = useStartRun(() => api.authorSuggestion(s.id))
@@ -40,26 +39,26 @@ export function SuggestionRow({ suggestion: s, selected, onSelect }: Props) {
   })
   const state = rowState(s)
   const done = state === 'passed' || state === 'dismissed'
-  const vars = Object.entries(s.vars).map(([key, value]) => `${key} = ${value}`).join(' · ')
+  const vars = Object.entries(s.vars).map(([key, value]) => `${key} = ${value}`).join(', ')
   const run = s.run_id && <Link to={`/runs/${s.run_id}`}><StatusTile status={s.run_status ?? 'queued'} /></Link>
   const error = author.error ?? dismiss.error
   return (
     <div className={styles.row}>
-      <Tile className={styles.select}>
+      <div className={styles.select}>
         {state === 'open' && (
           <label className={styles.hit}>
             <input type="checkbox" aria-label={`Select ${s.name}`} checked={selected} onChange={(e) => onSelect(e.target.checked)} />
           </label>
         )}
-      </Tile>
-      <Tile className={done ? `${styles.body} muted` : styles.body}>
+      </div>
+      <div className={done ? `${styles.body} muted` : styles.body}>
         <span className={styles.name}>{s.name}</span>
-        <span className={styles.clamp}>{s.intent.split(/(\{\{\s*\w+\s*\}\})/).map((part, i) => (i % 2 ? <code key={i}>{part}</code> : part))}</span>
+        <span>{s.intent.split(/(\{\{\s*\w+\s*\}\})/).map((part, i) => (i % 2 ? <code key={i}>{part}</code> : part))}</span>
         <span className={`small muted ${styles.clamp}`} title={s.why}>Why: {s.why}</span>
         {vars && <code>{vars}</code>}
-        <span className="small muted">{SOURCE[s.source]} · {ago(s.created_at)}</span>
-      </Tile>
-      <Tile className={styles.action}>
+        <span className="small muted">{SOURCE[s.source]}, {ago(s.created_at)}</span>
+      </div>
+      <div className={styles.action}>
         {state === 'open' && <Button disabled={author.isPending} onClick={() => author.mutate()}>Author</Button>}
         {state === 'open' && <Button variant="quiet" disabled={dismiss.isPending} onClick={() => dismiss.mutate()}>Dismiss</Button>}
         {(state === 'running' || state === 'failed') && run}
@@ -69,7 +68,7 @@ export function SuggestionRow({ suggestion: s, selected, onSelect }: Props) {
         )}
         {state === 'dismissed' && <Button variant="quiet" disabled={dismiss.isPending} onClick={() => dismiss.mutate()}>Restore</Button>}
         {error && <span className="small fail" role="alert">{error.message}</span>}
-      </Tile>
+      </div>
     </div>
   )
 }

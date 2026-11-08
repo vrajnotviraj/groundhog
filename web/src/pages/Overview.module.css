@@ -1,21 +1,29 @@
-.hero { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: var(--gh-gap); padding-bottom: 8px; }
-.verdict { display: flex; min-height: 340px; padding: 32px; }
-.verdictText { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; max-width: 58%; }
-.date { font: 500 15px/1.2 var(--gh-font); color: var(--gh-sun); }
-.headline { font: var(--gh-display); letter-spacing: -0.035em; color: var(--gh-ink-text); }
-.subline { color: var(--gh-surface-2); }
+/* Today leads: the ink tile spans the row; the run picker takes the right third when open. */
+.hero { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--gh-gap); align-items: start; }
+.picking { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); }
+.verdict { display: flex; min-height: 320px; padding: 32px; }
+.verdict :focus-visible { outline-color: var(--gh-focus-on-ink); }
+.verdictText { display: flex; flex-direction: column; align-items: flex-start; gap: 16px; max-width: 58%; }
+.headline { font: var(--gh-display); letter-spacing: var(--gh-tracking-head); color: var(--gh-ink-text); }
+.subline { margin-top: -8px; font: var(--gh-lead); color: var(--gh-surface-2); }
 .failure { color: var(--gh-ink-text); }
-.run { margin-top: auto; }
 
-.figures { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-rows: 1fr; gap: var(--gh-gap); }
+/* The day's figures sit under the strip as one row: number first, label under it. */
+.figures { display: flex; flex-wrap: wrap; gap: 12px 32px; margin: 0; }
+.stat { display: flex; flex-direction: column; gap: 4px; }
+.statValue { order: -1; margin: 0; font: var(--gh-figure); font-variant-numeric: tabular-nums; color: var(--gh-ink-text); }
+.statLabel { color: var(--gh-surface-2); }
+.actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 24px; margin-top: auto; padding-top: 8px; }
 
 @media (max-width: 899px) {
-  .hero { grid-template-columns: 1fr; }
-  .verdictText { max-width: 64%; }
+  .picking { grid-template-columns: minmax(0, 1fr); }
+  .verdictText { max-width: calc(100% - 320px); }
 }
 
+/* Phone: the groundhog gets the bottom of the tile to itself, nothing drawn over it. */
 @media (max-width: 639px) {
-  .verdict { min-height: 420px; padding: 24px 16px; }
+  .verdict { min-height: 0; padding: 24px 16px 240px; }
   .verdictText { max-width: none; }
   .headline { font-size: 36px; }
+  .figures { display: grid; grid-template-columns: repeat(2, auto); justify-content: start; }
 }

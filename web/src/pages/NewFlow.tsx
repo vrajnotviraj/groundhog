@@ -2,7 +2,6 @@ import { useMutation, useQuery } from '@tanstack/react-query'
 import { useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router'
 import { anthropicKeySet, api, casesQuery, settingsHealthQuery } from '../api'
-import { Board } from '../layout/Board'
 import { Button } from '../forms/Button'
 import { CaseStack } from '../forms/CaseStack'
 import { Field } from '../forms/Field'
@@ -12,15 +11,17 @@ import { NAME_PATTERN } from '../format'
 import { useStartRun } from '../run/live'
 import form from '../styles/form.module.css'
 import type { FlowCase } from '../types'
+import styles from './NewFlow.module.css'
 
 export function NewFlow() {
   return (
     <>
       <PageTitle title="New flow" subline="A flow runs saved cases in order in one browser, then its cleanup." />
-      <Board title="Two ways to make a flow">
+      {/* composing is the quick way and leads; building by hand sits beside it on the ground */}
+      <div className={styles.ways}>
         <Compose />
         <ByHand />
-      </Board>
+      </div>
     </>
   )
 }
@@ -76,16 +77,14 @@ function ByHand() {
     save.mutate()
   }
   return (
-    <form className={`tile ${form.form} ${form.panel}`} onSubmit={submit}>
+    <form className={`${form.form} ${styles.hand}`} onSubmit={submit}>
       <h2>Build by hand</h2>
       <Field label="Name">
         <input required pattern={NAME_PATTERN} value={name} onChange={(e) => setName(e.target.value)} />
       </Field>
       <Field label="Shared vars"><VarRows vars={vars} onChange={setVars} /></Field>
-      <div className="split">
-        <CaseStack title="Chain" cases={chain} options={names} onChange={setChain} />
-        <CaseStack title="Cleanup" cases={cleanup} options={names} onChange={setCleanup} />
-      </div>
+      <CaseStack title="Chain" cases={chain} options={names} onChange={setChain} />
+      <CaseStack title="Cleanup" cases={cleanup} options={names} onChange={setCleanup} />
       {save.error && <p className="fail" role="alert">{save.error.message}</p>}
       <Button type="submit" disabled={!chain.length || save.isPending}>Save flow</Button>
     </form>

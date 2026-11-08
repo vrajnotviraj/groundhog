@@ -6,19 +6,16 @@ import { Board } from '../layout/Board'
 import { Button } from '../forms/Button'
 import { Confirm } from '../forms/Confirm'
 import { Field } from '../forms/Field'
-import { Figure } from '../layout/Figure'
 import { LoadError, LoadingRows } from '../mascot/Loading'
 import { PageTitle } from '../layout/PageTitle'
 import { Select } from '../forms/Select'
 import { Table, type Column } from '../table/Table'
-import { Tile } from '../layout/Tile'
 import { ago, count } from '../format'
 import type { Check, User } from '../types'
+import form from '../styles/form.module.css'
 import styles from './Settings.module.css'
 
 const TABS = [['/settings', 'Health'], ['/settings/users', 'Users'], ['/settings/about', 'About']]
-// a check named like an env var is one .env setting
-const ENV_NAME = /^[A-Z0-9_]+$/
 
 export function Settings() {
   const me = useQuery(meQuery)
@@ -28,9 +25,9 @@ export function Settings() {
   return (
     <>
       <PageTitle title="Settings" />
-      <nav className={styles.tabs} aria-label="Settings sections">
+      <nav className="tabs" aria-label="Settings sections">
         {TABS.filter(([to]) => admin || to !== '/settings/users').map(([to, label]) => (
-          <NavLink key={to} to={to} end className={({ isActive }) => (isActive ? styles.active : styles.tab)}>{label}</NavLink>
+          <NavLink key={to} to={to} end className="tab">{label}</NavLink>
         ))}
       </nav>
       {shown === 'health' && <Health />}
@@ -47,35 +44,40 @@ function Health() {
   if (!health.data) return <LoadingRows count={4} />
   const { checks, optional, workers } = health.data
   const failing = checks.filter((c) => !c.ok).length
+  // failing checks first, so the thing to fix leads
+  const sorted = [...checks].sort((a, b) => Number(a.ok) - Number(b.ok))
   return (
     <>
-      <Board title="Checks" className={styles.checks} aside={
+      <Board title="Checks" aside={
         <span className={styles.aside}>
           <span className="muted">{failing ? `${failing} failing` : 'all pass'}</span>
           <Button variant="text" onClick={() => health.refetch()}>Check again</Button>
         </span>}>
-        <EnvTile checks={checks.filter((c) => ENV_NAME.test(c.name))} />
-        {checks.filter((c) => !ENV_NAME.test(c.name)).map((check) => <CheckTile key={check.name} check={check} />)}
-        <Tile className={styles.stack}>
-          <span className={`marker ${login.data ? (login.data.ok ? 'pass' : 'fail') : ''}`}>{loginMark(login.data?.ok)}</span>
-          <span className={styles.name}>App login</span>
-          <span className="small muted">{login.data?.detail ?? <>Signs in to the app under test with the <code>.env</code> account. Takes a few seconds.</>}</span>
-          <Button disabled={login.isPending} onClick={() => login.mutate()}>{login.isPending ? 'Checking' : 'Run login check'}</Button>
-        </Tile>
+        <ul className={styles.list} aria-label="Checks">
+          {sorted.map((check) => <CheckRow key={check.name} check={check} />)}
+          <li className={styles.check}>
+            <span className={`marker ${login.data ? (login.data.ok ? 'pass' : 'fail') : 'surface-2'}`}>{loginMark(login.data?.ok)}</span>
+            <span className={styles.name}>App login</span>
+            <span className={`muted ${styles.detail}`}>{login.data?.detail ?? <>Signs in to the app under test with the <code>.env</code> account. Takes a few seconds.</>}</span>
+            <Button variant="secondary" disabled={login.isPending} onClick={() => login.mutate()}>{login.isPending ? 'Checking' : 'Run login check'}</Button>
+          </li>
+        </ul>
       </Board>
       <Board title="Optional settings">
-        {optional.map((o) => (
-          <Tile key={o.name} className={styles.optional}>
-            <code>{o.name}</code>
-            <span className={styles.name}>{o.set ? 'Set' : 'Not set'}</span>
-            <span className={`small muted ${styles.note}`}>{o.note}</span>
-          </Tile>
-        ))}
-        <Tile className={styles.optional}>
-          <code>MAX_WORKERS</code>
-          <span className={styles.name}>{workers} at a time</span>
-          <span className={`small muted ${styles.note}`}>How many runs the console runs at once; the rest wait as queued.</span>
-        </Tile>
+        <ul className={styles.list}>
+          {optional.map((o) => (
+            <li key={o.name} className={styles.setting}>
+              <code>{o.name}</code>
+              <span className={styles.name}>{o.set ? 'Set' : 'Not set'}</span>
+              <span className={`muted ${styles.note}`}>{o.note}</span>
+            </li>
+          ))}
+          <li className={styles.setting}>
+            <code>MAX_WORKERS</code>
+            <span className={styles.name}>{workers} at a time</span>
+            <span className={`muted ${styles.note}`}>How many runs the console runs at once; the rest wait as queued.</span>
+          </li>
+        </ul>
       </Board>
     </>
   )
@@ -86,30 +88,15 @@ function loginMark(ok?: boolean) {
   return ok ? 'OK' : 'Fix'
 }
 
-// The .env checks as one figure, the failing ones listed first with their hint.
-function EnvTile({ checks }: { checks: Check[] }) {
-  const set = checks.filter((c) => c.ok).length
-  const names = [...checks].sort((a, b) => Number(a.ok) - Number(b.ok))
+function CheckRow({ check }: { check: Check }) {
+  // the API's detail often repeats the name first ("BASE_URL still the placeholder", "Jev — ...")
+  const detail = check.detail.startsWith(check.name + ' ') ? check.detail.slice(check.name.length + 1).replace(/^— /, '') : check.detail
   return (
-    <Figure label="Environment" value={`${set} of ${checks.length} set`} note={
-      <span className={styles.names}>
-        {names.map((c) => (
-          <span key={c.name} className={c.ok ? undefined : 'fail'}>
-            <code>{c.name}</code>{!c.ok && c.detail !== c.name && <> {c.detail}</>}
-          </span>
-        ))}
-      </span>
-    } />
-  )
-}
-
-function CheckTile({ check }: { check: Check }) {
-  return (
-    <Tile className={styles.stack}>
+    <li className={styles.check}>
       <span className={`marker ${check.ok ? 'pass' : 'fail'}`}>{check.ok ? 'OK' : 'Fix'}</span>
       <span className={styles.name}>{check.name}</span>
-      {check.detail !== check.name && <span className={`small muted ${styles.detail}`}>{check.detail}</span>}
-    </Tile>
+      {detail !== check.name && <span className={`muted ${styles.detail}`}>{detail}</span>}
+    </li>
   )
 }
 
@@ -129,15 +116,15 @@ function Users({ myEmail }: { myEmail?: string }) {
     },
   ]
   return (
-    <>
+    <div className={styles.users}>
       <Board title={users.data ? count(users.data.length, 'user') : 'Users'}>
         {users.isError && <LoadError what="the users" onRetry={users.refetch} />}
         {users.isPending && <LoadingRows count={2} />}
         {users.data && <Table label="Users" columns={columns} rows={users.data} rowKey={(u) => u.id} />}
+        {remove.error && <p className="fail" role="alert">{remove.error.message}</p>}
       </Board>
-      {remove.error && <p className="fail" role="alert">{remove.error.message}</p>}
       <AddUser onAdded={refresh} />
-    </>
+    </div>
   )
 }
 
@@ -159,7 +146,7 @@ function AddUser({ onAdded }: { onAdded: () => void }) {
   }
   return (
     <Board title="Add a user">
-      <form className={styles.addUser} onSubmit={submit}>
+      <form className={`tile ${form.panel} ${styles.addUser}`} onSubmit={submit}>
         <Field label="Email"><input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} /></Field>
         <Field label="Password">
           <input type="password" required minLength={8} autoComplete="new-password" value={password}
@@ -167,8 +154,8 @@ function AddUser({ onAdded }: { onAdded: () => void }) {
         </Field>
         <Select label="Role" value={role} options={['member', 'admin']} onChange={(e) => setRole(e.target.value as User['role'])} />
         <Button variant="primary" type="submit" disabled={add.isPending}>Add user</Button>
+        {add.error && <p className="fail" role="alert">{add.error.message}</p>}
       </form>
-      {add.error && <p className="fail" role="alert">{add.error.message}</p>}
     </Board>
   )
 }
@@ -178,19 +165,21 @@ function About() {
   const checks = useQuery(settingsHealthQuery)
   const mongo = checks.data?.checks.find((c) => c.name.toLowerCase().includes('mongo'))
   return (
-    <Board className={styles.about}>
-      <Tile className={styles.stack}>
-        <span className="small muted">Version</span>
-        <span className={styles.name}>{health.data?.version ?? '-'}</span>
-      </Tile>
-      <Tile className={styles.stack}>
-        <span className="small muted">Database</span>
-        <span className={styles.name}>{mongo?.detail ?? '-'}</span>
-      </Tile>
-      <Tile className={styles.stack}>
-        <span className="small muted">Documentation</span>
-        <span><code>README.md</code> in the repo root covers the CLI, the console and <code>./start.sh</code>.</span>
-      </Tile>
+    <Board title="This console">
+      <dl className={styles.list}>
+        <div className={styles.fact}>
+          <dt>Version</dt>
+          <dd>{health.data?.version ?? '-'}</dd>
+        </div>
+        <div className={styles.fact}>
+          <dt>Database</dt>
+          <dd>{mongo?.detail ?? '-'}</dd>
+        </div>
+        <div className={styles.fact}>
+          <dt>Documentation</dt>
+          <dd><code>README.md</code> in the repo root covers the CLI, the console and <code>./start.sh</code>.</dd>
+        </div>
+      </dl>
     </Board>
   )
 }

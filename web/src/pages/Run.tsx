@@ -25,10 +25,10 @@ const ASSERTION_COLUMNS: Column<AssertionEvent>[] = [
     header: 'Result', width: '80px', role: 'key',
     cell: (a) => <span className={`marker ${a.passed ? 'pass' : 'fail'}`}>{a.passed ? 'Passed' : 'Failed'}</span>,
   },
-  { header: 'Assertion', role: 'identity', width: 'minmax(0, 2fr)', cell: (a) => a.assertion },
+  { header: 'Assertion', role: 'identity', width: 'minmax(0, 3fr)', cell: (a) => a.assertion },
   { header: 'Checked by', width: '104px', cell: (a) => checkedBy(a.mode) },
   // Jev's reasoning is only its probability, which the Confidence column already shows
-  { header: 'Reasoning', width: 'minmax(0, 3fr)', cell: (a) => (/^jev p=[\d.]+$/.test(a.reasoning) ? null : a.reasoning) },
+  { header: 'Reasoning', width: 'minmax(0, 2fr)', cell: (a) => (/^jev p=[\d.]+$/.test(a.reasoning) ? null : a.reasoning) },
   { header: 'Confidence', width: '88px', align: 'end', cell: (a) => a.confidence?.toFixed(2) },
 ]
 
@@ -70,13 +70,15 @@ export function Run() {
       {actionError && <p className="fail" role="alert">{actionError.message}</p>}
       <div className={styles.headline}>
         <Mascot mood={mood(run.status)} className={styles.mascot} />
-        <div className={styles.status}>
+        <div className={styles.verdict}>
           <StatusTile status={run.status} size="figure" />
-          {run.flaky && <Tile tone="sun" className={styles.flaky}>flaky · passed on attempt {run.attempts}</Tile>}
+          {run.flaky && <Tile tone="sun" className={styles.flaky}>Flaky, passed on attempt {run.attempts}</Tile>}
         </div>
-        {modes.length
-          ? <StepStrip modes={modes} onSelect={jump} />
-          : <Tile tone="ground" className={styles.waiting}>{waiting(live, retried !== undefined)}</Tile>}
+        <Tile className={styles.strip}>
+          {modes.length
+            ? <StepStrip modes={modes} onSelect={jump} />
+            : <p className="muted">{waiting(live, retried !== undefined)}</p>}
+        </Tile>
       </div>
       {run.error && <Tile className={styles.runError}><span className="fail">{errorText(run.error, ran)}</span></Tile>}
       {ran && (
@@ -98,11 +100,11 @@ export function Run() {
 
 function subline(run: RunDoc, steps: number): string {
   const counted = count(steps, run.kind === 'crawl' ? 'page' : 'step')
-  if (isLive(run.status)) return `${run.status} · ${counted} so far`
+  if (isLive(run.status)) return `${run.status === 'running' ? 'Running' : 'Queued'}, ${counted} so far`
   const parts = [counted, count(run.ai_calls ?? 0, 'AI call')]
   if (run.total_ms != null) parts.push(duration(run.total_ms))
   if (run.attempts && run.attempts > 1) parts.push(count(run.attempts, 'attempt'))
-  return parts.join(' · ')
+  return parts.join(', ')
 }
 
 function waiting(live: boolean, retrying: boolean): string {
@@ -138,7 +140,7 @@ function Notes({ notes }: { notes: NoteEvent[] }) {
 // The run's AI usage, or a note that it used none.
 function Cost({ run }: { run: RunDoc }) {
   const { jev, anthropic } = run.usage ?? {}
-  if (!jev && !anthropic) return <Tile className={styles.static}>Zero AI calls, fully static run.</Tile>
+  if (!jev && !anthropic) return <Board title="AI cost"><Tile>Zero AI calls, fully static run.</Tile></Board>
   return (
     <Board title="AI cost" className={styles.cost}>
       {jev && <Figure label="Jev calls" value={jev.calls} />}

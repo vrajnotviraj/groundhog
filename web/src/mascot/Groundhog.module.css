@@ -1,5 +1,6 @@
-/* Animations end on the resting pose, so reduced motion still shows the groundhog. */
+/* Hallmark · stamp lives on line 1 of styles/tokens.css */
 .groundhog { display: block; width: 100%; height: auto; overflow: visible; }
+/* Animations end on the resting pose, so reduced motion still shows the groundhog. */
 .sun { animation: rise 1.4s 200ms cubic-bezier(.2, .8, .2, 1) both; }
 .body { transform-box: view-box; transform-origin: 120px 180px; animation: popUp 700ms var(--gh-spring) both; }
 .eyes { transform-box: fill-box; transform-origin: center; animation: blink 4.8s 1.2s infinite; }
@@ -27,6 +28,9 @@
 .mascot { position: relative; overflow: hidden; background: var(--gh-ink); color: var(--gh-ink-text); min-height: 160px; isolation: isolate; }
 .scene { position: absolute; z-index: -1; right: 4%; bottom: 0; width: min(78%, 360px); }
 
-/* Empty: the head and one sentence. */
-.empty { display: flex; align-items: center; gap: 16px; grid-column: 1 / -1; min-height: 88px; }
-.head { flex: none; width: 56px; height: 56px; }
+/* Empty: two tiles side by side, the head on its own ink tile and the sentence beside it. */
+.empty { display: grid; grid-template-columns: 88px minmax(0, 1fr); gap: var(--gh-gap); grid-column: 1 / -1; }
+.headTile { display: grid; place-items: center; min-height: 88px; padding: 12px; background: var(--gh-ink); }
+.head { width: 56px; height: 56px; }
+.say { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
+.say > p { max-width: 60ch; }

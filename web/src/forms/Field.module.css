@@ -1,1 +1,3 @@
-.field { display: grid; gap: var(--gh-gap); align-content: start; min-width: 0; }
+.field { display: grid; gap: 4px; align-content: start; min-width: 0; }
+.label { font: 500 14px/1.45 var(--gh-font); color: var(--gh-ink); }
+.hint { font: var(--gh-small); color: var(--gh-muted); }

@@ -1,0 +1,4 @@
+/* The chain sits under the flow's name: one quiet line, cut short when it runs long. */
+.chain { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: var(--gh-small); color: var(--gh-muted); }
+/* On a phone the chain wraps in full: it is what the flow is. */
+@media (max-width: 639px) { .chain { white-space: normal; overflow-wrap: anywhere; } }

@@ -37,7 +37,7 @@ export function SuggestForm({ primary, pending, error, onSuggest }: Props) {
     <form className={`tile ${form.form} ${form.panel} ${styles.form}`} onSubmit={submit}>
       <h2>From</h2>
       <fieldset className={field.field}>
-        <legend className="small muted">Docs URLs</legend>
+        <legend className={styles.legend}>Docs URLs</legend>
         <span className={styles.urls}>
           {urls.map((url, i) => (
             <span key={i} className={styles.url}>
@@ -54,12 +54,12 @@ export function SuggestForm({ primary, pending, error, onSuggest }: Props) {
         <textarea rows={8} maxLength={20_000} value={text} onChange={(e) => setText(e.target.value)} />
       </Field>
       <label className={form.check}>
-        <input type="checkbox" checked={mapped} onChange={(e) => setUseMap(e.target.checked)} />Use the map's gaps
+        <input type="checkbox" checked={mapped} onChange={(e) => setUseMap(e.target.checked)} />Use the map’s gaps
       </label>
       <Field label="How many">
         <input type="number" required min={1} max={15} value={count} onChange={(e) => setCount(Number(e.target.value))} />
       </Field>
-      <p className="small muted">Your saved cases are read too, so it won't suggest one you already have.</p>
+      <p className="small muted">Your saved cases are read too, so it won’t suggest one you already have.</p>
       {keySet === false && (
         <p className="small">Suggesting needs <code>ANTHROPIC_API_KEY</code> in <code>.env</code>. <Link to="/settings">Settings</Link></p>
       )}

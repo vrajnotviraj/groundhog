@@ -16,21 +16,22 @@ import { Table, type Column } from '../table/Table'
 import { Tile } from '../layout/Tile'
 import { ago, checkedBy, count, duration, intentVars } from '../format'
 import { useStartRun } from '../run/live'
+import { Intent } from './Cases'
 import form from '../styles/form.module.css'
 import type { Assertion, Case as CaseDoc, Heal, Health, Step } from '../types'
 import styles from './Case.module.css'
 
 const STEP_COLUMNS: Column<Step>[] = [
-  { header: 'Action', width: '64px', role: 'key', cell: (s) => s.action },
+  { header: 'Step', width: '40px', role: 'lead', cell: (s) => <code className="muted">{s.id}</code> },
+  { header: 'Action', width: '56px', role: 'key', cell: (s) => s.action },
   { header: 'Description', role: 'identity', width: 'minmax(0, 2fr)', cell: (s) => s.description },
   {
     header: 'Selector', width: 'minmax(0, 2fr)',
-    cell: (s) => (
+    cell: (s) => (s.selector || s.fallback_selectors.length > 0 || s.healed_count > 0) && (
       <span className={styles.selector}>
-        {s.selector && <code>{s.selector}</code>}
-        <span className="small muted">
-          {s.id}{s.fallback_selectors.length > 0 && ` · ${count(s.fallback_selectors.length, 'fallback')}`}
-        </span>
+        {s.selector && <code className={styles.code} title={s.selector}>{s.selector}</code>}
+        {s.fallback_selectors.length > 0 && <span className="tag">{count(s.fallback_selectors.length, 'fallback')}</span>}
+        {s.healed_count > 0 && <span className="tag sun">{count(s.healed_count, 'heal')}</span>}
       </span>
     ),
   },
@@ -73,7 +74,7 @@ export function Case() {
 
   return (
     <>
-      <PageTitle title={name} subline={doc.intent}>
+      <PageTitle title={name} subline={<Intent text={doc.intent} />}>
         <Button variant="primary" onClick={() => toggle('run')}>Run</Button>
         <Button onClick={() => toggle('json')}>Edit JSON</Button>
         {isAdmin(me.data) && (
@@ -93,30 +94,26 @@ export function Case() {
   )
 }
 
-// Pass rate, duration, heals and flaky runs over the last 10 runs, then each run as a tile.
+// The last 10 runs as linked squares, then pass rate, duration, heals and flaky runs beside them.
 function HealthBoard({ health }: { health: Health }) {
   const { runs, passed, avg_ms, heals, flaky, history } = health
   if (!runs) {
     return (
-      <Board title="Health" className={styles.health}>
-        <Figure label="Pass rate" value="-" />
-        <Figure label="Average duration" value="-" />
-        <Figure label="Heals" value="-" />
-        <Figure label="Flaky runs" value="-" />
-        <Empty>Not run yet. Start one with Run.</Empty>
+      <Board title="Health">
+        <Tile><p className="muted">Not run yet. Start one with Run.</p></Tile>
       </Board>
     )
   }
   return (
     <Board title="Health" className={styles.health}>
-      <Figure label={`Pass rate, last ${runs}`} value={`${Math.round((passed / runs) * 100)}%`} note={`${passed} of ${runs}`} />
+      <Tile className={styles.history}>
+        <HistoryStrip runs={history} size="large" label={`Last ${count(runs, 'run')}, oldest first`} />
+        <span className="small muted">Last {count(runs, 'run')}, oldest first</span>
+      </Tile>
+      <Figure label="Pass rate" value={`${Math.round((passed / runs) * 100)}%`} />
       <Figure label="Average duration" value={duration(avg_ms ?? undefined)} />
       <Figure label="Heals" value={heals} />
       <Figure label="Flaky runs" value={flaky} tone={flaky ? 'sun' : undefined} />
-      <Tile className={styles.history}>
-        <HistoryStrip runs={history} size="large" label={`Last ${count(runs, 'run')}, oldest first`} />
-        <span className="small muted">oldest → newest</span>
-      </Tile>
     </Board>
   )
 }

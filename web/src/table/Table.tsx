@@ -20,7 +20,7 @@ interface Props<T> {
   rowKey: (row: T) => string
 }
 
-// A table of tile rows; below 640px each row folds into two lines.
+// A table of tile rows on 2px seams; below 640px each row folds into two lines.
 export function Table<T>({ label, columns, rows, rowKey }: Props<T>) {
   const widths = (shown: Column<T>[]) => shown.map((c) => c.width ?? 'minmax(0, 1fr)').join(' ')
   const template = {
@@ -35,6 +35,7 @@ export function Table<T>({ label, columns, rows, rowKey }: Props<T>) {
       <div role="row" className={styles.header}>
         {columns.map((c) => <span key={c.header} role="columnheader" className={cellClass(c)}>{c.head ?? c.header}</span>)}
       </div>
+      <div role="rowgroup" className={styles.body}>
       {rows.map((row) => (
         <div key={rowKey(row)} role="row" className={styles.row}>
           {columns.map((c) => (
@@ -46,6 +47,7 @@ export function Table<T>({ label, columns, rows, rowKey }: Props<T>) {
           <span className={styles.break} />
         </div>
       ))}
+      </div>
     </div>
   )
 }

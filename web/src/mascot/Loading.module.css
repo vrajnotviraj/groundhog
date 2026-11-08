@@ -1,9 +1,15 @@
-.rows { display: grid; gap: var(--gh-gap); }
-.row { display: flex; align-items: center; min-height: var(--gh-row); padding: 0 16px; }
-.bar { display: block; width: 40%; height: 14px; border-radius: 2px; background: var(--gh-surface-2); animation: wait 1.2s ease-in-out infinite; }
+/* Skeleton rows in the table's shape: tile rows on 2px seams. */
+.rows { display: grid; gap: var(--gh-seam); }
+.row { display: flex; align-items: center; min-height: var(--gh-row); padding: 0 16px; border-radius: var(--gh-radius-inner); }
+.row:first-child { border-top-left-radius: var(--gh-radius); border-top-right-radius: var(--gh-radius); }
+.row:last-child { border-bottom-left-radius: var(--gh-radius); border-bottom-right-radius: var(--gh-radius); }
+.bar { display: block; width: 40%; height: 12px; border-radius: var(--gh-radius-inner); background: var(--gh-surface-2); animation: wait 1.2s ease-in-out infinite; }
 .row:nth-child(2n) .bar { width: 28%; animation-delay: 150ms; }
 @keyframes wait { 50% { opacity: 0.4; } }
-.error { display: flex; align-items: center; gap: 16px; min-height: var(--gh-row); padding: 0 16px; }
-.head { flex: none; width: 32px; height: 32px; }
-.retry { font-weight: 500; }
+/* A load error: the worried head on its own ink tile, the message and Retry beside it. */
+.error { display: grid; grid-template-columns: 56px minmax(0, 1fr); gap: var(--gh-gap); }
+.headTile { display: grid; place-items: center; padding: 8px; background: var(--gh-ink); }
+.head { width: 36px; height: 36px; }
+.message { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 16px; min-height: 56px; padding-block: 8px; }
+.retry { display: inline-flex; align-items: center; min-height: 32px; font-weight: 500; }
 .retry:hover { text-decoration: underline; text-underline-offset: 3px; }

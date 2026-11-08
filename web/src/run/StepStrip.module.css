@@ -7,35 +7,29 @@
 .small .failed { background: var(--gh-fail); }
 .small .skipped { background: var(--gh-ground); }
 
-.large { display: flex; flex-wrap: wrap; align-content: start; gap: var(--gh-gap); flex: 1; min-width: 0; }
+/* The large strip sits inside a surface panel on the Run page, so it uses the small strip's tones at 40px. */
+.large { display: flex; flex-wrap: wrap; align-content: start; gap: var(--gh-gap); min-width: 0; }
 .large .tile {
-  flex: 0 1 56px;
-  min-height: 40px;
-  padding: 0 8px;
-  border-radius: var(--gh-radius);
-  display: flex;
-  align-items: flex-end;
-  padding-bottom: 8px;
-  font: 500 13px/1 var(--gh-font);
-  transition: transform var(--gh-motion) ease-out, background-color var(--gh-motion) ease-out;
-  animation: land 400ms var(--gh-spring) both;
+  display: grid; place-items: center; width: 40px; height: 40px; border-radius: var(--gh-radius-inner);
+  font: 500 14px/1 var(--gh-font); font-variant-numeric: tabular-nums; color: var(--gh-ink);
+  transition: background-color var(--gh-motion) ease-out, transform var(--gh-motion) ease-out;
 }
-@keyframes land { from { transform: translateY(12px) scale(0.9); opacity: 0; } }
-.large .tile:active { transform: scale(0.98); }
-.large .static { background: var(--gh-surface); }
-.large .static:hover { background: var(--gh-surface-hover); }
-.large .fallback { background: var(--gh-surface-2); }
-.large .fallback:hover { background: var(--gh-surface-2-hover); }
+.large .tile:active { transform: scale(0.96); }
+.large .static { background: var(--gh-surface-2); }
+.large .static:hover { background: var(--gh-surface-2-hover); }
+.large .fallback { background: var(--gh-muted); color: var(--gh-ground); }
+.large .fallback:hover { background: var(--gh-ink); }
 .large .healed { background: var(--gh-sun); color: var(--gh-sun-ink); }
 .large .healed:hover { background: var(--gh-sun-hover); }
 .large .failed { background: var(--gh-fail); color: var(--gh-fail-ink); }
 .large .failed:hover { background: var(--gh-fail-hover); }
 .large .skipped { background: var(--gh-ground); color: var(--gh-muted); }
-.large .skipped:hover { background: var(--gh-surface); }
+.large .skipped:hover { background: var(--gh-surface-hover); }
 
-/* 35px fits 8 tiles on one row of a 343px phone column. */
+/* 36px fits 8 squares on one row of a phone panel. */
 @media (max-width: 639px) {
-  .large .tile { flex: 0 1 35px; min-width: 32px; }
+  .large { gap: 4px; }
+  .large .tile { width: 36px; height: 36px; }
 }
 
 .lastRun { display: inline-flex; align-items: center; gap: 12px; max-width: 100%; }

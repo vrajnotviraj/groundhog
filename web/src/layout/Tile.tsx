@@ -1,7 +1,7 @@
 import type { HTMLAttributes } from 'react'
 import styles from './Tile.module.css'
 
-export type Tone = 'surface' | 'surface-2' | 'ground' | 'pass' | 'fail' | 'sun'
+export type Tone = 'surface' | 'surface-2' | 'ground' | 'ink' | 'pass' | 'fail' | 'sun'
 
 // A filled rounded block.
 export function Tile({ tone = 'surface', className = '', ...rest }: HTMLAttributes<HTMLDivElement> & { tone?: Tone }) {

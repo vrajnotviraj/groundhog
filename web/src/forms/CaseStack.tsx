@@ -20,15 +20,18 @@ export function CaseStack({ title, cases, options, onChange }: Props) {
   return (
     <section className={styles.stack} aria-label={title}>
       <h2>{title}</h2>
+      <div className={styles.rows}>
       {cases.map((c, i) => (
         <Tile key={`${c.case}-${i}`} className={styles.case}>
+          <span className={styles.index}>{i + 1}</span>
           <span className={styles.name}>{c.case}</span>
           {i > 0 && <Button variant="text" onClick={() => move(i, i - 1)}>Up</Button>}
           {i < cases.length - 1 && <Button variant="text" onClick={() => move(i, i + 1)}>Down</Button>}
           <Button variant="quiet" className={styles.remove} onClick={() => onChange(cases.filter((_, j) => j !== i))}>Remove</Button>
         </Tile>
       ))}
-      {!cases.length && <Tile tone="ground" className={styles.case}>No cases yet.</Tile>}
+      {!cases.length && <Tile className={`${styles.case} ${styles.none}`}>No cases yet.</Tile>}
+      </div>
       <select aria-label={`Add case to ${title.toLowerCase()}`} value=""
         onChange={(e) => onChange([...cases, { case: e.target.value, vars: {} }])}>
         <option value="">Add a case…</option>

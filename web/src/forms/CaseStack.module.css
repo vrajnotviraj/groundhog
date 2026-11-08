@@ -1,4 +1,15 @@
+/* An ordered chain: numbered rows on 2px seams, the add select under them. */
 .stack { display: grid; gap: var(--gh-gap); align-content: start; min-width: 0; }
-.case { display: flex; align-items: center; gap: 16px; min-height: var(--gh-row); padding: 0 16px; }
+.rows { display: grid; gap: var(--gh-seam); min-width: 0; }
+.case { display: flex; align-items: center; gap: 12px; min-height: var(--gh-row); padding: 4px 12px 4px 0; border-radius: var(--gh-radius-inner); }
+.rows > .case:first-child { border-top-left-radius: var(--gh-radius); border-top-right-radius: var(--gh-radius); }
+.rows > .case:last-child { border-bottom-left-radius: var(--gh-radius); border-bottom-right-radius: var(--gh-radius); }
+.index { flex: none; width: 40px; text-align: center; font: 500 14px/1 var(--gh-font); color: var(--gh-muted); }
 .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
-.remove { margin-left: 8px; }
+.remove { margin-left: 4px; }
+.none { padding-left: 16px; }
+
+@media (max-width: 639px) {
+  .index { width: 28px; }
+  .case { gap: 8px; }
+}

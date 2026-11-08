@@ -1,9 +1,24 @@
 .fields { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 16px; }
-.pages { grid-template-columns: repeat(auto-fill, minmax(min(240px, 100%), 1fr)); }
-.page { display: grid; gap: 4px; align-content: start; overflow-wrap: anywhere; }
+
+/* The map: sections pack into four columns, each spanning its page count. */
+.sections { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--gh-section-gap) 16px; padding-top: 24px; align-items: start; }
+.section { display: grid; gap: var(--gh-gap); min-width: 0; }
+.section[data-span="2"] { grid-column: span 2; }
+.section[data-span="3"] { grid-column: span 3; }
+.section[data-span="4"] { grid-column: span 4; }
+.pages { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr)); gap: var(--gh-gap); }
+.page { display: grid; gap: 4px; align-content: start; overflow-wrap: anywhere; height: 100%; }
+.page code { font: var(--gh-mono); color: var(--gh-muted); }
 .title { font-weight: 500; }
 .covered { font-weight: 500; color: var(--gh-accent); }
 
+@media (max-width: 899px) {
+  .sections { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .section[data-span="3"], .section[data-span="4"] { grid-column: span 2; }
+}
+
 @media (max-width: 639px) {
   .fields { grid-template-columns: 1fr; }
+  .sections { grid-template-columns: minmax(0, 1fr); }
+  .section[data-span] { grid-column: auto; }
 }

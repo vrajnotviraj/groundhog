@@ -10,12 +10,12 @@ interface Props {
   note?: ReactNode
 }
 
-// A labelled number tile: the label and note at the top, the number on the tile's bottom edge.
-export function Figure({ label, value, tone, note }: Props) {
+// A labelled number tile: the number first, then its label and an optional note.
+export function Figure({ label, value, tone = 'surface', note }: Props) {
   return (
-    <Tile tone={tone} className={styles.figure}>
-      <span className="small muted">{label}</span>
-      {note && <span className="small muted">{note}</span>}
+    <Tile tone={tone} className={styles.figure} data-tone={tone}>
+      <span className={`small ${styles.label}`}>{label}</span>
+      {note && <span className={`small ${styles.label}`}>{note}</span>}
       <span className={styles.value}>{value}</span>
     </Tile>
   )

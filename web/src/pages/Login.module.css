@@ -1,27 +1,28 @@
+/* Sign-in leads: the form sits level with the pitch, the groundhog on its ink tile keeps the left. */
 .page {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 440px);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 400px);
   gap: var(--gh-gap);
-  max-width: 1080px;
+  max-width: 1000px;
   min-height: 100svh;
   margin: 0 auto;
   padding: 8px;
 }
 .mascot { min-height: 480px; padding: 40px; }
-.pitch { position: relative; font: var(--gh-display); letter-spacing: -0.035em; max-width: 17ch; text-wrap: balance; }
-.form { display: flex; flex-direction: column; gap: 24px; padding: 32px; }
-/* centred in the space under the wordmark */
-.fields { display: grid; gap: 16px; justify-items: start; margin-block: auto; }
-.fields > label { width: 100%; }
+.pitch { position: relative; font: var(--gh-display); letter-spacing: -0.035em; max-width: 17ch; text-wrap: balance; overflow-wrap: break-word; min-width: 0; }
+.form { display: flex; flex-direction: column; justify-content: center; gap: 32px; padding: 40px 32px; }
+.head { display: grid; gap: 8px; }
 .wordmark { font: var(--gh-title); letter-spacing: -0.01em; }
+.fields { display: grid; gap: 16px; }
+.fields > button { justify-self: start; margin-top: 8px; }
 
 @media (min-width: 1000px) {
-  .page { min-height: 0; height: min(680px, 100svh); margin-top: max(8px, calc((100svh - 680px) / 2)); }
+  .page { min-height: 0; height: min(600px, 100svh); margin-top: max(8px, calc((100svh - 600px) / 2)); }
 }
 
 @media (max-width: 639px) {
   .page { grid-template-columns: 1fr; grid-template-rows: 200px auto; min-height: 0; }
   .mascot { min-height: 200px; padding: 24px 16px; }
   .pitch { display: none; }
-  .form { padding: 24px 16px; }
+  .form { gap: 24px; padding: 24px 16px; }
 }

@@ -1,6 +1,19 @@
-.saved { display: grid; gap: 4px; }
-.saved h2 { padding-bottom: 8px; }
-.intent { display: grid; align-content: center; min-height: 44px; padding: 6px 8px; margin: 0 -8px; border-radius: var(--gh-radius); text-align: left; transition: background-color var(--gh-motion) ease-out; }
+/* The intent form leads; saved intents are a narrower seamed list beside it. */
+.layout { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: var(--gh-section-gap); align-items: start; }
+.saved { display: grid; gap: 8px; min-width: 0; }
+.list { display: grid; gap: var(--gh-seam); }
+.intent {
+  display: grid; align-content: center; gap: 2px; min-height: 52px; padding: 8px var(--gh-pad-row);
+  border-radius: var(--gh-radius-inner); background: var(--gh-surface); text-align: left;
+  transition: background-color var(--gh-motion) ease-out;
+}
+.intent:first-child { border-top-left-radius: var(--gh-radius); border-top-right-radius: var(--gh-radius); }
+.intent:last-child { border-bottom-left-radius: var(--gh-radius); border-bottom-right-radius: var(--gh-radius); }
 .intent:hover { background: var(--gh-surface-hover); }
+.intent:active { background: var(--gh-surface-2); }
 .line { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .name { font-weight: 500; }
+
+@media (max-width: 899px) {
+  .layout { grid-template-columns: minmax(0, 1fr); }
+}

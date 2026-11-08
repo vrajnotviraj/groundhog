@@ -13,6 +13,7 @@ import { useStartRun } from '../run/live'
 import { RunTable } from '../run/RunTable'
 import { toVars, VarRows } from '../forms/VarRows'
 import type { FlowDetail } from '../types'
+import styles from './Flow.module.css'
 
 export function Flow() {
   const name = useParams().name!
@@ -67,13 +68,17 @@ function Builder({ flow }: { flow: FlowDetail }) {
         )}
       </PageTitle>
       {error && <p className="fail" role="alert">{error.message}</p>}
-      <div className="split">
+      {/* the chain leads on the left; cleanup and the vars every case shares sit beside it */}
+      <div className={`split ${styles.builder}`}>
         <CaseStack title="Chain" cases={chain} options={names} onChange={edited(setChain)} />
-        <CaseStack title="Cleanup" cases={cleanup} options={names} onChange={edited(setCleanup)} />
+        <div className={styles.side}>
+          <CaseStack title="Cleanup" cases={cleanup} options={names} onChange={edited(setCleanup)} />
+          <section className={styles.vars} aria-label="Shared vars">
+            <h2>Shared vars</h2>
+            <VarRows vars={vars} onChange={edited(setVars)} />
+          </section>
+        </div>
       </div>
-      <Board title="Shared vars">
-        <VarRows vars={vars} onChange={edited(setVars)} />
-      </Board>
       <Board title="Recent runs">
         {flow.runs.length ? <RunTable runs={flow.runs} /> : <Empty>Not run yet. Start one with Run.</Empty>}
       </Board>

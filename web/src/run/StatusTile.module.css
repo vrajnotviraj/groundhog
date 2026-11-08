@@ -1,4 +1,2 @@
 .status { flex: none; white-space: nowrap; }
-/* A pass is the common case, so in rows only the exceptions carry a marker. */
-.status:global(.marker.pass)::before { display: none; }
-.figure { display: flex; align-items: flex-end; min-width: 176px; font: var(--gh-figure); }
+.figure { display: flex; align-items: flex-end; min-width: 176px; font: var(--gh-figure); letter-spacing: var(--gh-tracking-head); }

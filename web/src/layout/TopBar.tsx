@@ -23,7 +23,7 @@ export function TopBar({ email, onSignOut }: Props) {
   const close = () => setOpen(false)
   const running = useRunsWith('running')
   const queued = useRunsWith('queued')
-  const chip = [running.length && `${running.length} live`, queued.length && `${queued.length} queued`].filter(Boolean).join(' · ')
+  const chip = [running.length && `${running.length} live`, queued.length && `${queued.length} queued`].filter(Boolean).join(', ')
 
   useEffect(() => {
     if (!open) return

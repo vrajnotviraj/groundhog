@@ -3,8 +3,6 @@ import { useState } from 'react'
 import { api, casesQuery, settingsHealthQuery, type RunOptions } from '../api'
 import { Board } from '../layout/Board'
 import { Button } from '../forms/Button'
-import { Empty } from '../mascot/Empty'
-import { Figure } from '../layout/Figure'
 import type { Mood } from '../mascot/Groundhog'
 import { LoadError, LoadingRows } from '../mascot/Loading'
 import { HistoryStrip } from '../run/HistoryStrip'
@@ -30,40 +28,59 @@ export function Overview() {
   const failed = failedRuns.length
   const live = today.filter((r) => isLive(r.status)).length
   let mood: Mood = 'happy'
-  if (live) mood = 'dig'
+  if (runs.isError && !runs.data) mood = 'worried'
+  else if (live) mood = 'dig'
   else if (failed) mood = 'worried'
   else if (!today.length) mood = 'sleep'
 
+  const date = new Date().toLocaleDateString('en', { weekday: 'long', day: 'numeric', month: 'long' })
+  let title = 'Checking today\'s runs'
+  if (runs.isError && !runs.data) title = 'Couldn\'t load today\'s runs'
+  else if (runs.data) title = headline(today.length, passed, failed, live)
+
+  // Today leads: one ink tile with the verdict, the run strip and the day's figures; the picker opens beside it.
   return (
     <>
-      <div className={styles.hero}>
+      <div className={`${styles.hero} ${picking ? styles.picking : ''}`}>
         <Mascot mood={mood} className={styles.verdict}>
           <div className={styles.verdictText}>
-            <p className={styles.date}>{new Date().toLocaleDateString('en', { weekday: 'long', day: 'numeric', month: 'long' })}</p>
-            <h1 className={styles.headline}>{runs.data ? headline(today.length, passed, failed, live) : 'Checking today\'s runs'}</h1>
-            {runs.data && <p className={styles.subline}>{todaySummary(today)}</p>}
-            {failed === 1 && <Button variant="text" className={styles.failure} to={`/runs/${failedRuns[0].id}`}>Open the failed run</Button>}
-            {failed > 1 && <Button variant="text" className={styles.failure} to="/runs?status=failed">Show {failed} failed</Button>}
+            <h1 className={styles.headline}>{title}</h1>
+            <p className={styles.subline}>{date}{runs.data ? `. ${todaySummary(today)}` : ''}</p>
             {today.length > 0 && (
               <HistoryStrip size="large" label="Today's runs"
                 runs={[...today].reverse().map((r) => ({ id: r.id, status: r.status, flaky: r.flaky, title: runTitle(r) }))} />
             )}
-            <Button variant="primary" className={styles.run} onClick={() => setPicking(!picking)}>{picking ? 'Close' : 'Run a case'}</Button>
+            {runs.data && (
+              <dl className={styles.figures}>
+                <Stat label="Runs today" value={today.length} />
+                <Stat label="Pass rate" value={today.length ? `${Math.round((passed / today.length) * 100)}%` : '-'} />
+                <Stat label="Healed steps" value={healed} />
+                <Stat label="AI calls today" value={aiCalls} />
+              </dl>
+            )}
+            <div className={styles.actions}>
+              <Button variant={picking ? 'secondary' : 'primary'} onClick={() => setPicking(!picking)}>{picking ? 'Close' : 'Run a case'}</Button>
+              {failed === 1 && <Button variant="text" className={styles.failure} to={`/runs/${failedRuns[0].id}`}>Open the failed run</Button>}
+              {failed > 1 && <Button variant="text" className={styles.failure} to="/runs?status=failed">Show {failed} failed</Button>}
+            </div>
           </div>
         </Mascot>
-        {picking ? <CasePicker onClose={() => setPicking(false)} /> : (
-          <div className={styles.figures}>
-            <Figure label="Runs today" value={today.length} />
-            <Figure label="Pass rate" value={today.length ? `${Math.round((passed / today.length) * 100)}%` : '-'} />
-            <Figure label="Healed steps" value={healed} />
-            <Figure label="AI calls today" value={aiCalls} />
-          </div>
-        )}
+        {picking && <CasePicker onClose={() => setPicking(false)} />}
       </div>
       <Board title="Latest runs" aside={runs.data?.length ? <Button variant="text" to="/runs">View all</Button> : null}>
         <LatestRuns runs={runs.data} isError={runs.isError} onRetry={runs.refetch} />
       </Board>
     </>
+  )
+}
+
+// One of the day's figures, drawn on the ink tile: number first, label under it.
+function Stat({ label, value }: { label: string; value: number | string }) {
+  return (
+    <div className={styles.stat}>
+      <dt className={`small ${styles.statLabel}`}>{label}</dt>
+      <dd className={styles.statValue}>{value}</dd>
+    </div>
   )
 }
 
@@ -86,7 +103,8 @@ function todaySummary(today: RunSummary[]): string {
 function LatestRuns({ runs, isError, onRetry }: { runs?: RunSummary[]; isError: boolean; onRetry: () => void }) {
   if (isError) return <LoadError what="the latest runs" onRetry={onRetry} />
   if (!runs) return <LoadingRows />
-  if (!runs.length) return <Empty>No runs yet. Run a case to see it here.</Empty>
+  // the hero already shows the groundhog, so the second empty state is a plain sentence
+  if (!runs.length) return <p className="tile">No runs yet. Run a case to see it here.</p>
   return <RunTable runs={runs.slice(0, 6)} />
 }
 
@@ -110,7 +128,7 @@ function CasePicker({ onClose }: { onClose: () => void }) {
   if (cases.isError) return <LoadError what="the cases" onRetry={cases.refetch} />
   if (!cases.data) return <LoadingRows count={1} />
   const names = cases.data.map((c) => c.name)
-  if (!names.length) return <Empty>No saved cases yet. Author one under Cases.</Empty>
+  if (!names.length) return <p className="tile">No saved cases yet. Author one under Cases.</p>
   const chosen = name === ALL ? undefined : cases.data.find((c) => c.name === name) ?? cases.data[0]
   const options = [{ value: ALL, label: `All cases (${names.length})` }, ...names]
   const select = <Select label="Case" value={chosen?.name ?? ALL} onChange={(e) => setName(e.target.value)} options={options} />

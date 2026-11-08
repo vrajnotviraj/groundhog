@@ -4,7 +4,6 @@ import { api, casesQuery } from '../api'
 import { Button } from '../forms/Button'
 import { Field } from '../forms/Field'
 import { PageTitle } from '../layout/PageTitle'
-import { Tile } from '../layout/Tile'
 import { toVars, VarRows } from '../forms/VarRows'
 import { deriveName, intentVars, NAME_PATTERN, newest } from '../format'
 import { useStartRun } from '../run/live'
@@ -30,7 +29,7 @@ export function NewCase() {
   return (
     <>
       <PageTitle title="New case" subline="Jev drives the app once and saves the steps as selectors." />
-      <div className="split">
+      <div className={layout.layout}>
         <form className={styles.form} onSubmit={submit}>
           <Field label="Intent" hint={<>Write a value that changes per run as <code>{'{{name}}'}</code> and give it below.</>}>
             <textarea required rows={5} value={intent} onChange={(e) => changeIntent(e.target.value)}
@@ -53,7 +52,7 @@ export function NewCase() {
           {author.error && <p className="fail" role="alert">{author.error.message}</p>}
           <div className={styles.actions}>
             <Button variant="primary" type="submit" disabled={author.isPending}>{author.isPending ? 'Starting' : 'Author the case'}</Button>
-            <span className="small muted">Takes about a minute. You'll watch it on the run page.</span>
+            <span className="small muted">Takes about a minute. You’ll watch it on the run page.</span>
           </div>
         </form>
         <SavedIntents onPick={changeIntent} />
@@ -67,15 +66,19 @@ function SavedIntents({ onPick }: { onPick: (intent: string) => void }) {
   const cases = useQuery(casesQuery)
   const latest = newest(cases.data ?? [], 10)
   return (
-    <Tile className={layout.saved}>
-      <h2>Start from a saved intent</h2>
-      {cases.data && !latest.length && <p className="muted">No saved cases yet.</p>}
-      {latest.map((c) => (
-        <button key={c.name} type="button" className={layout.intent} onClick={() => onPick(c.intent)}>
-          <span className={`${layout.line} ${layout.name}`}>{c.name}</span>
-          <span className={`small muted ${layout.line}`}>{c.intent}</span>
-        </button>
-      ))}
-    </Tile>
+    <aside className={layout.saved} aria-labelledby="saved-intents">
+      <h2 id="saved-intents">Start from a saved intent</h2>
+      {cases.data && !latest.length && <p className="tile muted">No saved cases yet.</p>}
+      {latest.length > 0 && (
+        <div className={layout.list}>
+          {latest.map((c) => (
+            <button key={c.name} type="button" className={layout.intent} onClick={() => onPick(c.intent)}>
+              <span className={`${layout.line} ${layout.name}`}>{c.name}</span>
+              <span className={`small muted ${layout.line}`}>{c.intent}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </aside>
   )
 }

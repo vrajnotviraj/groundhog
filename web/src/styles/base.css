@@ -1,7 +1,8 @@
-/* Reset, type and the shared tile and page classes. */
+/* Reset, type and the shared global classes: page, tile, split, tabs, tag, marker, muted, small, fail. */
 *, *::before, *::after { box-sizing: border-box; margin: 0; }
 
-html { -webkit-text-size-adjust: 100%; scroll-behavior: smooth; }
+html, body { overflow-x: clip; }
+html { -webkit-text-size-adjust: 100%; scrollbar-color: var(--gh-surface-2) var(--gh-ground); }
 
 body {
   background: var(--gh-ground);
@@ -9,22 +10,27 @@ body {
   font: var(--gh-body);
   font-variant-numeric: tabular-nums;
   -webkit-font-smoothing: antialiased;
+  caret-color: var(--gh-ink);
 }
 
-h1 { font: var(--gh-title); letter-spacing: -0.01em; }
-h2 { font: var(--gh-section); }
+::selection { background: var(--gh-sun); color: var(--gh-sun-ink); }
+
+h1 { font: var(--gh-title); letter-spacing: var(--gh-tracking-head); overflow-wrap: break-word; min-width: 0; text-wrap: balance; }
+h2 { font: var(--gh-section); overflow-wrap: break-word; min-width: 0; text-wrap: balance; }
+h3 { font: 600 16px/1.4 var(--gh-font); }
 
 code { font: var(--gh-mono); overflow-wrap: anywhere; }
 
 a { color: inherit; text-decoration: none; }
-a:hover { text-decoration: underline; text-underline-offset: 3px; }
+a:hover { text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px; }
 
 button, input, select, textarea { font: inherit; color: inherit; }
 button { cursor: pointer; border: 0; background: none; padding: 0; }
 fieldset { min-width: 0; padding: 0; border: 0; }
 legend { padding: 0; margin-bottom: var(--gh-gap); }
 
-input:not([type=checkbox]), select, textarea {
+/* Fields are filled tiles: surface on the ground, ground inside a surface panel (form.module.css .panel). */
+input:not([type=checkbox]):not([type=radio]), select, textarea {
   width: 100%;
   min-width: 0;
   min-height: var(--gh-input);
@@ -34,42 +40,49 @@ input:not([type=checkbox]), select, textarea {
   background: var(--gh-surface);
   transition: background-color var(--gh-motion) ease-out;
 }
-textarea { padding: 10px 12px; resize: vertical; line-height: 1.45; }
-input:not([type=checkbox]):hover, select:hover, textarea:hover { background: var(--gh-surface-hover); }
-input[type=checkbox] { width: 16px; height: 16px; margin: 0; accent-color: var(--gh-ink); }
+textarea { padding: 8px 12px; resize: vertical; line-height: 1.5; }
+input::placeholder, textarea::placeholder { color: var(--gh-muted); opacity: 1; }
+input:not([type=checkbox]):not([type=radio]):hover, select:hover, textarea:hover { background: var(--gh-surface-hover); }
+input:not([type=checkbox]):not([type=radio]):focus-visible, select:focus-visible, textarea:focus-visible { outline-offset: -2px; }
+input:disabled, select:disabled, textarea:disabled { opacity: 0.55; cursor: not-allowed; }
+input[type=checkbox], input[type=radio] { width: 16px; height: 16px; margin: 0; accent-color: var(--gh-ink); }
 
-:focus-visible { outline: 2px solid var(--gh-accent); outline-offset: 2px; }
+:focus-visible { outline: 2px solid var(--gh-focus); outline-offset: 2px; }
 
-img { display: block; max-width: 100%; }
+img { display: block; max-width: 100%; height: auto; }
 
+/* A tile: one filled block holding one thing. */
 .tile { background: var(--gh-surface); border-radius: var(--gh-radius); padding: var(--gh-pad); min-width: 0; }
 
 .muted { color: var(--gh-muted); }
 .fail { color: var(--gh-fail); white-space: pre-line; }
 .small { font: var(--gh-small); }
 
-/* A status word after an 8px square mini-tile in the status tone. */
-.marker { display: inline-flex; align-items: center; gap: 8px; font: 500 13px/1 var(--gh-font); white-space: nowrap; }
-.marker::before { content: ""; flex: none; width: 8px; height: 8px; border-radius: 2px; background: var(--gh-surface-2); }
-.marker.pass::before { background: var(--gh-accent); }
-.marker.fail::before { background: var(--gh-fail); }
-.marker.sun::before { background: var(--gh-sun); animation: live 1.2s ease-in-out infinite; }
-@keyframes live { 50% { opacity: 0.4; } }
+/* A run's status word. Passed is the common case and stays plain ink; the exceptions get a filled mini tile. */
+.marker { display: inline-flex; align-items: center; min-height: 24px; font: 500 14px/1 var(--gh-font); white-space: nowrap; }
+.marker.surface-2 { color: var(--gh-muted); }
+.marker.fail, .marker.sun { padding: 0 8px; border-radius: var(--gh-radius-inner); }
+.marker.fail { background: var(--gh-fail); color: var(--gh-fail-ink); }
+.marker.sun { background: var(--gh-sun); color: var(--gh-sun-ink); }
+
+/* A short word set beside a name: the run's kind, a heal count. Sun for heals, flaky and live. */
+.tag { display: inline-flex; align-items: center; min-height: 20px; padding: 0 8px; border-radius: var(--gh-radius-inner); background: var(--gh-surface-2); color: var(--gh-ink); font: 500 14px/1 var(--gh-font); white-space: nowrap; vertical-align: 1px; }
+.tag.sun { background: var(--gh-sun); color: var(--gh-sun-ink); }
+
+/* Tabs: a row of links, the current one a filled surface tile. */
+.tabs { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; }
+.tab { display: inline-flex; align-items: center; flex: none; height: var(--gh-control); padding: 0 12px; border-radius: var(--gh-radius); font-weight: 500; color: var(--gh-muted); text-decoration: none !important; transition: color var(--gh-motion) ease-out, background-color var(--gh-motion) ease-out; }
+.tab:hover { color: var(--gh-ink); background: var(--gh-surface); }
+.tab[aria-current="page"] { color: var(--gh-ink); background: var(--gh-surface-2); }
 
 /* Two columns that stack below 900px. */
 .split { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--gh-gap); align-items: start; }
-@media (max-width: 899px) { .split { grid-template-columns: 1fr; } }
+@media (max-width: 899px) { .split { grid-template-columns: minmax(0, 1fr); } }
 
-.page { display: grid; gap: var(--gh-gap); max-width: calc(var(--gh-column) + 32px); margin: 0 auto; padding: 24px 16px 64px; }
-
-/* Page blocks fade in one after another. */
-.page > * { min-width: 0; animation: enter 420ms cubic-bezier(.2, .8, .2, 1) both; }
-.page > :nth-child(2) { animation-delay: 60ms; }
-.page > :nth-child(3) { animation-delay: 120ms; }
-.page > :nth-child(4) { animation-delay: 180ms; }
-.page > :nth-child(n+5) { animation-delay: 240ms; }
-@keyframes enter { from { opacity: 0; transform: translateY(16px); } }
+/* The page column: blocks sit 8px apart, a Board opens a new section 32px down. */
+.page { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--gh-gap); max-width: calc(var(--gh-column) + 32px); margin: 0 auto; padding: 24px 16px 64px; }
+.page > * { min-width: 0; }
 
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { transition: none !important; animation: none !important; scroll-behavior: auto !important; }
+  *, *::before, *::after { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; }
 }

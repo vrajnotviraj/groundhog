@@ -11,7 +11,7 @@ const COLUMNS: Column<RunSummary>[] = [
     cell: (r) => (
       <>
         <Link to={`/runs/${r.id}`}>{runTitle(r)}</Link>
-        {r.kind !== 'run' && r.kind !== 'crawl' && <span className="muted"> · {r.kind}</span>}
+        {r.kind !== 'run' && r.kind !== 'crawl' && <> <span className="tag">{r.kind}</span></>}
       </>
     ),
   },
@@ -20,11 +20,11 @@ const COLUMNS: Column<RunSummary>[] = [
   { header: 'When', width: '88px', align: 'end', cell: (r) => ago(r.created_at) },
   {
     header: 'Status', width: '120px', role: 'action',
-    cell: (r) => <><StatusTile status={r.status} />{r.flaky && <span className="small muted"> · flaky</span>}</>,
+    cell: (r) => <><StatusTile status={r.status} />{r.flaky && <> <span className="tag sun">flaky</span></>}</>,
   },
 ]
 
 // A table of runs: target, steps, duration, when and status.
-export function RunTable({ runs }: { runs: RunSummary[] }) {
-  return <Table label="Runs" columns={COLUMNS} rows={runs} rowKey={(r) => r.id} />
+export function RunTable({ runs, label = 'Runs' }: { runs: RunSummary[]; label?: string }) {
+  return <Table label={label} columns={COLUMNS} rows={runs} rowKey={(r) => r.id} />
 }

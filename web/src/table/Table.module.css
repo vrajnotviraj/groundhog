@@ -1,4 +1,7 @@
-.table { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--gh-gap); min-width: 0; }
+/* Hallmark · stamp lives on line 1 of styles/tokens.css */
+.table { display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; min-width: 0; }
+/* A table is one block of tile rows on 2px seams: no lines, no outer card. The head sits on the ground. */
+.body { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--gh-seam); min-width: 0; }
 .header, .row {
   display: grid;
   grid-template-columns: var(--columns);
@@ -6,12 +9,16 @@
   align-items: center;
   padding: 0 16px;
 }
-.header { min-height: 24px; font: var(--gh-small); color: var(--gh-muted); }
-.row { min-height: var(--gh-row); border-radius: var(--gh-radius); background: var(--gh-surface); transition: background-color var(--gh-motion) ease-out; }
+.header { min-height: 28px; font: var(--gh-small); color: var(--gh-muted); }
+.header > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.row { min-height: var(--gh-row); padding-block: 4px; border-radius: var(--gh-radius-inner); background: var(--gh-surface); transition: background-color var(--gh-motion) ease-out; }
+.row:first-child { border-top-left-radius: var(--gh-radius); border-top-right-radius: var(--gh-radius); }
+.row:last-child { border-bottom-left-radius: var(--gh-radius); border-bottom-right-radius: var(--gh-radius); }
 .row:hover { background: var(--gh-surface-hover); }
 .row > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.identity { font-weight: 500; }
 .rest { color: var(--gh-muted); }
-.header .rest { color: inherit; }
+.header .rest, .header .identity { color: inherit; font-weight: 400; }
 .end { text-align: right; justify-self: end; }
 .action { justify-self: end; }
 .break { display: none; }
@@ -19,9 +26,9 @@
 
 @media (min-width: 640px) and (max-width: 1100px) {
   .header, .row { grid-template-columns: var(--columns-tablet); }
-  .row { padding-block: 6px; }
+  .row { padding-block: 8px; }
   .secondary { display: none; }
-  .row > span.identity:has(.second) { white-space: normal; overflow-wrap: anywhere; }
+  .row > span.identity { white-space: normal; overflow-wrap: anywhere; }
   .second { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: var(--gh-small); color: var(--gh-muted); }
 }
 
@@ -33,6 +40,7 @@
   .key { order: 1; }
   .action { order: 2; }
   .break { display: block; order: 3; flex-basis: 100%; }
+  .row > span.identity { white-space: normal; overflow-wrap: anywhere; }
   .row > span.rest { max-width: 100%; white-space: normal; }
   .rest { order: 4; font: var(--gh-small); text-align: left; }
   .row > [role=cell]:empty { display: none; }

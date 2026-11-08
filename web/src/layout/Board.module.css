@@ -1,3 +1,6 @@
+/* Hallmark · stamp lives on line 1 of styles/tokens.css */
 .section { display: grid; gap: var(--gh-gap); min-width: 0; }
-.header { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; min-height: 32px; padding-top: 16px; }
+/* A titled board opens a new section: 24px here plus the page's 8px gap. */
+.header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 16px; min-height: var(--gh-control); padding-top: 24px; }
+.header > :not(h2) { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
 .board { display: grid; gap: var(--gh-gap); min-width: 0; }

@@ -13,10 +13,12 @@ export function LoadingRows({ count = 6 }: { count?: number }) {
 // A load error with a Retry button.
 export function LoadError({ what, onRetry }: { what: string; onRetry: () => void }) {
   return (
-    <div className={`tile ${styles.error}`} role="alert">
-      <Groundhog mark mood="worried" className={styles.head} />
-      <span>Couldn't load {what}.</span>
-      <button type="button" className={styles.retry} onClick={onRetry}>Retry</button>
+    <div className={styles.error} role="alert">
+      <div className={`tile ${styles.headTile}`}><Groundhog mark mood="worried" className={styles.head} /></div>
+      <div className={`tile ${styles.message}`}>
+        <span>Couldn’t load {what}.</span>
+        <button type="button" className={styles.retry} onClick={onRetry}>Retry</button>
+      </div>
     </div>
   )
 }

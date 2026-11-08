@@ -1,9 +1,11 @@
-.search { width: 280px; max-width: 100%; }
-.tag { margin-left: 8px; padding: 2px 6px; border-radius: var(--gh-radius); background: var(--gh-sun); color: var(--gh-sun-ink); font: 500 13px/1 var(--gh-font); }
+.toolbar { display: flex; align-items: center; gap: var(--gh-gap); margin-bottom: 16px; }
+.toolbar .search.search { width: 320px; max-width: 100%; }
+.name { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; white-space: normal; min-width: 0; }
+.name > a { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .pick, .pickAll { display: flex; align-items: center; justify-content: center; width: 44px; }
-.pick { min-height: 44px; cursor: pointer; }
+.pick { min-height: 32px; cursor: pointer; }
 .health { display: flex; align-items: center; gap: 8px; }
-.rate { width: 40px; text-align: right; font-weight: 500; }
+.rate { width: 48px; font-weight: 500; font-variant-numeric: tabular-nums; }
 
 /* Shown while cases are selected; sticks to the bottom of the viewport as a tile, with no shadow. */
 .bar {
@@ -15,7 +17,7 @@
   align-items: center;
   gap: 8px 16px;
   min-height: 56px;
-  padding: 0 16px;
+  padding: 0 var(--gh-pad);
   border-radius: var(--gh-radius);
   background: var(--gh-ink);
   color: var(--gh-ink-text);
@@ -24,9 +26,10 @@
 .note { font: var(--gh-small); color: var(--gh-surface-2); }
 .push { margin-left: auto; }
 .bar .onInk, .bar .onInk:hover { color: var(--gh-ink-text); }
+.bar :focus-visible { outline-color: var(--gh-focus-on-ink); }
 
 @media (max-width: 639px) {
-  .search { width: 100%; }
+  .toolbar .search.search { width: 100%; }
   .bar { padding: 8px 16px; }
   .bar button, .bar a { min-height: 44px; }
 }

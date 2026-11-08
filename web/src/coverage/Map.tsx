@@ -34,7 +34,11 @@ export function CoverageMap({ tabs }: { tabs: ReactNode }) {
       {map.isError && <LoadError what="the map" onRetry={map.refetch} />}
       {map.isPending && <LoadingRows />}
       {map.data && !map.data.sections.length && <Empty>No pages mapped yet. Crawl the app to see which pages your cases reach.</Empty>}
-      {map.data?.sections.map((section) => <SectionBoard key={section.name} section={section} />)}
+      {map.data && map.data.sections.length > 0 && (
+        <div className={styles.sections}>
+          {map.data.sections.map((section) => <SectionBoard key={section.name} section={section} />)}
+        </div>
+      )}
       {map.data && map.data.gaps.length > 0 && <Gaps gaps={map.data.gaps} />}
     </>
   )
@@ -44,7 +48,7 @@ function subline(map: AppMap) {
   if (!map.crawled_at) return 'Not crawled yet'
   const covered = map.sections.reduce((n, s) => n + s.covered, 0)
   const total = map.sections.reduce((n, s) => n + s.total, 0)
-  return `${covered} of ${count(total, 'page')} covered · crawled ${ago(map.crawled_at)}`
+  return `${covered} of ${count(total, 'page')} covered, crawled ${ago(map.crawled_at)}`
 }
 
 function CrawlForm() {
@@ -77,9 +81,13 @@ function CrawlForm() {
 
 export function SectionBoard({ section }: { section: MapSection }) {
   return (
-    <Board title={`${section.name} · ${section.covered} of ${section.total} covered`} className={styles.pages}>
-      {section.pages.map((page) => <PageTile key={page.path} page={page} />)}
-    </Board>
+    // Spans as many map columns as it has pages (up to 4), so short sections sit side by side.
+    <section className={styles.section} data-span={Math.min(section.pages.length, 4)}>
+      <h2>{`${section.name} · ${section.covered} of ${section.total} covered`}</h2>
+      <div className={styles.pages}>
+        {section.pages.map((page) => <PageTile key={page.path} page={page} />)}
+      </div>
+    </section>
   )
 }
 
@@ -101,7 +109,8 @@ function PageTile({ page }: { page: MapPage }) {
 }
 
 const GAP_COLUMNS: Column<Gap>[] = [
-  { header: 'Control', role: 'identity', width: 'minmax(0, 2fr)', cell: (g) => `${g.control.label} · ${g.control.kind}` },
+  { header: 'Control', role: 'identity', width: 'minmax(0, 2fr)', cell: (g) => g.control.label },
+  { header: 'Kind', role: 'key', width: '128px', cell: (g) => <span className="tag">{g.control.kind}</span> },
   { header: 'Page', width: 'minmax(0, 2fr)', cell: (g) => <code>{g.path}</code> },
   { header: 'Why', role: 'secondary', width: 'minmax(0, 2fr)', cell: (g) => g.why },
 ]

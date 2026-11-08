@@ -1,29 +1,36 @@
+/* Hallmark · stamp lives on line 1 of styles/tokens.css */
 .button {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   flex: none;
   height: var(--gh-control);
   padding: 0 16px;
   border-radius: var(--gh-radius);
-  font: 500 15px/1 var(--gh-font);
+  font: 500 16px/1 var(--gh-font);
   white-space: nowrap;
   text-decoration: none !important;
-  transition: background-color var(--gh-motion) ease-out, transform var(--gh-motion) ease-out;
+  transition: background-color var(--gh-motion) ease-out, color var(--gh-motion) ease-out, transform var(--gh-motion) ease-out;
 }
 .button:active:not(:disabled) { transform: scale(0.98); }
 .button:disabled { cursor: not-allowed; opacity: 0.55; }
 
+/* Filled buttons are tiles: sun for the one primary action, surface-2 for the rest. Text buttons sit in rows. */
 .primary { background: var(--gh-sun); color: var(--gh-sun-ink); font-weight: 600; }
 .primary:hover:not(:disabled) { background: var(--gh-sun-hover); }
 
 .secondary { background: var(--gh-surface-2); color: var(--gh-ink); }
 .secondary:hover:not(:disabled) { background: var(--gh-surface-2-hover); }
 
-.text, .quiet, .destructive { padding: 0; height: auto; min-height: 24px; }
+/* Text buttons keep a 32px hit area and no fill. */
+.text, .quiet, .destructive { height: auto; min-height: 32px; padding: 0 2px; }
 .text { color: var(--gh-ink); }
-.quiet { color: var(--gh-muted); transition: color var(--gh-motion) ease-out; }
+.quiet { color: var(--gh-muted); }
 .quiet:hover:not(:disabled) { color: var(--gh-ink); }
 .destructive { color: var(--gh-fail); }
-.text:hover:not(:disabled), .destructive:hover:not(:disabled) { text-decoration: underline !important; text-underline-offset: 3px; }
+.text:hover:not(:disabled), .destructive:hover:not(:disabled) { text-decoration: underline !important; text-decoration-thickness: 1px !important; text-underline-offset: 3px; }
+.text:active:not(:disabled), .quiet:active:not(:disabled), .destructive:active:not(:disabled) { transform: none; }
 
+/* An in-place confirmation: the question, then the confirming button and Keep. */
 .confirm { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
+.question { font-weight: 500; }

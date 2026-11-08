@@ -1,5 +1,5 @@
-.filters { display: grid; grid-template-columns: 180px 180px minmax(0, 320px); gap: var(--gh-gap) 16px; padding-bottom: 16px; }
-.more { justify-self: start; margin-top: 8px; }
+.filters { display: grid; grid-template-columns: 180px 180px minmax(0, 320px); align-items: end; gap: var(--gh-gap); padding-bottom: var(--gh-pad); }
+.more { justify-self: start; }
 
 @media (max-width: 639px) {
   .filters { grid-template-columns: 1fr 1fr; }

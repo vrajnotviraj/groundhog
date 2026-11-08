@@ -1,25 +1,30 @@
-.columns { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: var(--gh-gap); align-items: start; }
-.form { position: sticky; top: calc(var(--gh-bar) + 8px); }
+/* The list leads; the form that fills it sits beside it. */
+.columns { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+.form { position: sticky; top: calc(var(--gh-bar) + 8px); margin-top: var(--gh-gap); }
+.form > h2 { display: flex; align-items: center; min-height: var(--gh-control); margin: 0; text-wrap: balance; }
 .urls { display: grid; gap: var(--gh-gap); justify-items: start; }
-.url { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--gh-gap); align-items: center; width: 100%; }
+.url { display: grid; grid-template-columns: minmax(0, 1fr); grid-auto-flow: column; gap: var(--gh-gap); align-items: center; width: 100%; }
+.legend { padding: 0; margin-bottom: 4px; font: 500 14px/1.45 var(--gh-font); color: var(--gh-ink); }
 
 .selection { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px 16px; }
-.pending { display: flex; align-items: center; gap: 12px; }
-.dig { flex: none; width: 32px; height: 32px; }
 .toggle { justify-self: start; }
 
-.row { display: grid; grid-template-columns: 44px minmax(0, 1fr) minmax(112px, auto); gap: var(--gh-gap); }
-.select { display: grid; padding: 0; }
-.hit { display: grid; place-items: center; min-height: 44px; cursor: pointer; }
-.body { display: grid; gap: 4px; align-content: start; padding: 13px 16px; overflow-wrap: anywhere; }
+/* Rows of one list on 2px seams: outer corners 4px, inner 2px. */
+.list { display: grid; gap: var(--gh-seam); }
+.row { display: grid; grid-template-columns: 44px minmax(0, 1fr) minmax(112px, auto); background: var(--gh-surface); border-radius: var(--gh-radius-inner); }
+.list > .row:first-child { border-top-left-radius: var(--gh-radius); border-top-right-radius: var(--gh-radius); }
+.list > .row:last-child { border-bottom-left-radius: var(--gh-radius); border-bottom-right-radius: var(--gh-radius); }
+.select { display: grid; align-content: start; }
+.hit { display: grid; place-items: center; min-height: 48px; cursor: pointer; }
+.body { display: grid; gap: 4px; align-content: start; padding: var(--gh-pad-row) 16px var(--gh-pad-row) 0; overflow-wrap: anywhere; }
 .name { font-weight: 500; }
 .clamp { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-.action { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; padding: 13px 16px; }
+.action { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; padding: var(--gh-pad-row) 16px; }
 .authored { display: flex; gap: 8px; white-space: nowrap; }
 
-.placeholders { display: grid; gap: var(--gh-gap); }
-.placeholders .body { min-height: 112px; }
-.bar { display: block; width: 60%; height: 14px; border-radius: 2px; background: var(--gh-surface-2); }
+.placeholders .row { min-height: 112px; }
+.placeholders .body { padding-top: 16px; }
+.bar { display: block; width: 60%; height: 14px; border-radius: var(--gh-radius-inner); background: var(--gh-surface-2); }
 .bar + .bar { width: 40%; }
 
 @media (max-width: 899px) {
@@ -27,11 +32,9 @@
   .form { position: static; }
 }
 
-/* On a phone a row reads as one tile, its actions full width at the bottom. */
+/* On a phone the actions run full width under the idea. */
 @media (max-width: 639px) {
-  .row { grid-template-columns: 44px minmax(0, 1fr); gap: 0; border-radius: var(--gh-radius); overflow: hidden; }
-  .row > * { border-radius: 0; }
-  .body { padding-left: 0; }
+  .row { grid-template-columns: 44px minmax(0, 1fr); }
   .action { grid-column: 1 / -1; flex-direction: row; flex-wrap: wrap; align-items: center; padding-top: 0; }
   .action > button { flex: 1; justify-content: center; min-height: 44px; }
 }

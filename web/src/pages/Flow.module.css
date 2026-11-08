@@ -1,0 +1,4 @@
+/* Chain on the left, cleanup over shared vars on the right; one column under 900px (from .split). */
+.builder { row-gap: var(--gh-section-gap); margin-top: 8px; }
+.side { display: grid; gap: var(--gh-section-gap); align-content: start; min-width: 0; }
+.vars { display: grid; gap: var(--gh-gap); min-width: 0; }

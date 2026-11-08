@@ -5,10 +5,8 @@ import { api } from '../api'
 import { Board } from '../layout/Board'
 import { Button } from '../forms/Button'
 import { Empty } from '../mascot/Empty'
-import { Groundhog } from '../mascot/Groundhog'
 import { LoadError } from '../mascot/Loading'
 import { PageTitle } from '../layout/PageTitle'
-import { Tile } from '../layout/Tile'
 import { SuggestForm } from './SuggestForm'
 import { ROW_ORDER, rowState, SuggestionRow } from './SuggestionRow'
 import type { Suggestion } from '../types'
@@ -53,30 +51,31 @@ export function Suggestions({ tabs }: { tabs: ReactNode }) {
   )
   return (
     <>
-      <PageTitle title="Coverage" subline="Test ideas from your docs, your saved cases and the map's gaps. Nothing runs until you author one." />
+      <PageTitle title="Coverage" subline="Ideas from your docs, cases and the map’s gaps. Nothing runs until you author one." />
       {tabs}
       <div className={styles.columns}>
-        <SuggestForm primary={!open.length} pending={suggest.isPending} error={suggest.error} onSuggest={suggest.mutate} />
         <Board title="Suggestions" aside={selection}>
           {suggest.isPending && (
-            <p role="status" className={styles.pending}>
-              <Groundhog mark mood="dig" className={styles.dig} />
-              Reading the docs and your saved cases. This takes 10 to 40 seconds.
-            </p>
+            <div role="status"><Empty mood="dig">Reading the docs and your saved cases. This takes 10 to 40 seconds.</Empty></div>
           )}
           {authorSelected.error && <p className="fail" role="alert">{authorSelected.error.message}</p>}
           {list.isError && <LoadError what="the suggestions" onRetry={list.refetch} />}
           {(list.isPending || suggest.isPending) && <PlaceholderRows />}
           {list.data && !list.data.length && !suggest.isPending && (
-            <Empty>No suggestions yet. Add a docs page, paste some text or use the map's gaps.</Empty>
+            <Empty>No suggestions yet. Add a docs page, paste some text or use the map’s gaps.</Empty>
           )}
-          {shown.map((s) => <SuggestionRow key={s.id} suggestion={s} selected={picked.includes(s.id)} onSelect={(on) => select(s.id, on)} />)}
+          {shown.length > 0 && (
+            <div className={styles.list}>
+              {shown.map((s) => <SuggestionRow key={s.id} suggestion={s} selected={picked.includes(s.id)} onSelect={(on) => select(s.id, on)} />)}
+            </div>
+          )}
           {dismissed.length > 0 && (
             <Button variant="quiet" className={styles.toggle} onClick={() => setShowDismissed(!showDismissed)}>
               {showDismissed ? 'Hide dismissed' : `Show ${dismissed.length} dismissed`}
             </Button>
           )}
         </Board>
+        <SuggestForm primary={!open.length} pending={suggest.isPending} error={suggest.error} onSuggest={suggest.mutate} />
       </div>
     </>
   )
@@ -85,12 +84,12 @@ export function Suggestions({ tabs }: { tabs: ReactNode }) {
 // Six empty rows at the real row size while suggestions load.
 function PlaceholderRows() {
   return (
-    <div className={styles.placeholders} aria-busy="true" aria-label="Loading suggestions">
+    <div className={`${styles.list} ${styles.placeholders}`} aria-busy="true" aria-label="Loading suggestions">
       {Array.from({ length: 6 }, (_, i) => (
         <div key={i} className={styles.row}>
-          <Tile className={styles.select} />
-          <Tile className={styles.body}><span className={styles.bar} /><span className={styles.bar} /></Tile>
-          <Tile className={styles.action} />
+          <div className={styles.select} />
+          <div className={styles.body}><span className={styles.bar} /><span className={styles.bar} /></div>
+          <div className={styles.action} />
         </div>
       ))}
     </div>

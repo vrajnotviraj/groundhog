@@ -7,12 +7,12 @@ interface Props {
   mood?: Mood
 }
 
-// Empty state: the groundhog's head and one sentence.
+// Empty state: the groundhog's head on an ink tile, and one sentence beside it.
 export function Empty({ children, mood = 'sleep' }: Props) {
   return (
-    <div className={`tile ${styles.empty}`}>
-      <Groundhog mark mood={mood} className={styles.head} />
-      <p>{children}</p>
+    <div className={styles.empty}>
+      <div className={`tile ${styles.headTile}`}><Groundhog mark mood={mood} className={styles.head} /></div>
+      <div className={`tile ${styles.say}`}><p>{children}</p></div>
     </div>
   )
 }

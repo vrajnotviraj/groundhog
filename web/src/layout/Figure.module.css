@@ -1,2 +1,4 @@
-.figure { display: flex; flex-direction: column; gap: 4px; min-height: 104px; }
-.value { margin-top: auto; padding-top: 8px; font: var(--gh-figure); }
+/* Numbers first: the figure leads, its label sits under it, a note under that. */
+.figure { display: flex; flex-direction: column; gap: 4px; }
+.value { order: -1; font: var(--gh-figure); letter-spacing: var(--gh-tracking-head); overflow-wrap: anywhere; }
+.figure[data-tone="surface"] .label, .figure[data-tone="ground"] .label { color: var(--gh-muted); }
